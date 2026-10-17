@@ -1,0 +1,632 @@
+//! The WYSIWYG canvas: preview, selection, moving, resizing and dropping
+//! widgets from the palette.
+
+pub mod assets;
+mod render;
+
+use std::collections::HashMap;
+
+use eframe::egui::{self, Color32, CursorIcon, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
+use lvglab_model::coord::{Coord, Unit};
+use lvglab_model::layout::{self as lay, Layout, Measure};
+use lvglab_model::project::DisplayShape;
+use lvglab_model::theme::{StyleResolver, Theme};
+use lvglab_model::widget::Geometry;
+use lvglab_model::{Project, WidgetId, WidgetKind};
+
+use crate::app::Studio;
+use crate::i18n::{tr, trf};
+use crate::settings::{AppSettings, CanvasBackground};
+use crate::visuals::{self, ACCENT};
+use assets::AssetCache;
+use render::Renderer;
+
+const HANDLE: f32 = 7.0;
+
+/// What the canvas remembers about a placed widget between frames.
+#[derive(Clone, Debug)]
+pub struct NodeInfo {
+    pub id: WidgetId,
+    pub kind: WidgetKind,
+    pub rect: lay::Rect,
+    pub clip: lay::Rect,
+    pub children_area: lay::Rect,
+    pub parent: Option<usize>,
+    pub hidden: bool,
+    /// Position and size can be edited on the canvas.
+    pub movable: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Drag {
+    Move { id: WidgetId, start: lay::Rect, geometry: Geometry },
+    Resize { id: WidgetId, handle: usize, start: lay::Rect, geometry: Geometry },
+}
+
+pub struct CanvasState {
+    pub zoom: f32,
+    pub pan: Vec2,
+    pub fit_pending: bool,
+    /// Refit when the canvas is resized until the user zooms or pans.
+    pub auto_fit: bool,
+    last_size: Vec2,
+    pub nodes: Vec<NodeInfo>,
+    drag: Option<Drag>,
+}
+
+impl Default for CanvasState {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+            fit_pending: true,
+            auto_fit: true,
+            last_size: Vec2::ZERO,
+            nodes: Vec::new(),
+            drag: None,
+        }
+    }
+}
+
+impl CanvasState {
+    pub fn is_dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    fn node(&self, id: WidgetId) -> Option<(usize, &NodeInfo)> {
+        self.nodes.iter().enumerate().find(|(_, n)| n.id == id)
+    }
+
+    fn hit(&self, x: i32, y: i32) -> Option<usize> {
+        self.nodes.iter().rposition(|n| !n.hidden && n.rect.contains(x, y) && n.clip.contains(x, y))
+    }
+
+    /// Geometry of `id` moved by `(dx, dy)` display pixels.
+    pub fn nudged(&self, project: &Project, id: WidgetId, dx: i32, dy: i32) -> Option<Geometry> {
+        let (_, node) = self.node(id)?;
+        if !node.movable {
+            return None;
+        }
+        let widget = project.widget(id)?;
+        let parent = &self.nodes[node.parent?];
+        let rect = lay::Rect { x: node.rect.x + dx, y: node.rect.y + dy, ..node.rect };
+        Some(geometry_for_rect(widget.geometry, rect, parent, false))
+    }
+}
+
+/// Converts a desired display rectangle back into a geometry that keeps
+/// the widget's alignment and units.
+fn geometry_for_rect(mut g: Geometry, rect: lay::Rect, parent: &NodeInfo, resized: bool) -> Geometry {
+    let area = parent.children_area;
+    let (ax, ay) = g.align.anchor(area.tuple(), parent.rect.tuple(), (rect.w, rect.h));
+    let to_unit = |unit: Unit, px: i32, reference: i32| match unit {
+        Unit::Percent if reference > 0 => Coord::pct((px as f32 * 100.0 / reference as f32).round() as i32),
+        _ => Coord::px(px),
+    };
+    g.x = to_unit(g.x.unit, rect.x - ax, area.w);
+    g.y = to_unit(g.y.unit, rect.y - ay, area.h);
+    if resized {
+        g.width = to_unit(g.width.unit, rect.w.max(1), area.w);
+        g.height = to_unit(g.height.unit, rect.h.max(1), area.h);
+    }
+    g
+}
+
+struct EguiMeasure<'a> {
+    ctx: &'a egui::Context,
+    assets: &'a AssetCache,
+    project: &'a Project,
+    images: HashMap<String, (i32, i32)>,
+}
+
+impl Measure for EguiMeasure<'_> {
+    fn text_size(
+        &self,
+        text: &str,
+        font: &str,
+        letter_space: i32,
+        line_space: i32,
+        max_width: Option<i32>,
+    ) -> (i32, i32) {
+        let font_id = self.assets.font_id(self.project, font, 1.0);
+        // LVGL's line height (ascent - descent) instead of egui's row height,
+        // which includes the font's line gap.
+        let line_height = self.assets.line_height(self.project, font) + line_space as f32;
+        let format = egui::TextFormat {
+            font_id,
+            extra_letter_spacing: letter_space as f32,
+            line_height: Some(line_height),
+            ..Default::default()
+        };
+        let mut job = egui::text::LayoutJob::single_section(text.to_owned(), format);
+        job.wrap.max_width = max_width.map_or(f32::INFINITY, |w| w as f32);
+        let size = self.ctx.fonts(|f| f.layout_job(job)).size();
+        (size.x.ceil() as i32, size.y.ceil() as i32)
+    }
+
+    fn line_height(&self, font: &str) -> i32 {
+        self.assets.line_height(self.project, font).round() as i32
+    }
+
+    fn image_size(&self, image: &str) -> Option<(i32, i32)> {
+        self.images.get(image).copied()
+    }
+}
+
+pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
+    toolbar(ui, studio);
+    ui.add_space(2.0);
+    let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+    let palette = visuals::palette(ui.ctx());
+    let painter = ui.painter_at(rect);
+    let background = draw_background(&painter, rect, studio.settings.canvas_background, palette.canvas);
+
+    let (width, height) = (studio.doc.project.display.width as i32, studio.doc.project.display.height as i32);
+    let view = &mut studio.canvas;
+    if view.auto_fit && (rect.size() - view.last_size).length() > 1.0 {
+        view.fit_pending = true;
+    }
+    view.last_size = rect.size();
+    if view.fit_pending && rect.width() > 50.0 {
+        view.zoom = ((rect.width() - 80.0) / width as f32).min((rect.height() - 80.0) / height as f32).clamp(0.1, 8.0);
+        view.pan = Vec2::ZERO;
+        view.fit_pending = false;
+    }
+    handle_zoom_and_pan(ui, &response, rect, view, width, height);
+    let zoom = view.zoom;
+    let display_size = vec2(width as f32, height as f32) * zoom;
+    let origin = (rect.center() - display_size / 2.0 + view.pan).round();
+    let display = Rect::from_min_size(origin, display_size);
+
+    if studio.settings.show_grid {
+        draw_grid(&painter, display, zoom, studio.settings.grid_size.max(2) as f32, palette.canvas_grid);
+    }
+
+    // Lay out and paint the current screen.
+    let project = &studio.doc.project;
+    let Some(screen) = project.widget(studio.screen) else {
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            tr("No screen"),
+            egui::FontId::proportional(16.0),
+            palette.muted,
+        );
+        return;
+    };
+    let theme = Theme::new(&project.theme, &project.display);
+    let resolver = StyleResolver::new(&theme);
+    let measure = EguiMeasure { ctx: ui.ctx(), assets: &studio.assets, project, images: studio.assets.image_sizes() };
+    let layout = Layout::compute(screen, width, height, &resolver, &measure, studio.selected);
+    let preview_state = studio.selected.filter(|_| studio.style_state.0 != 0).map(|id| (id, studio.style_state));
+    let renderer = Renderer {
+        painter: painter.clone(),
+        origin,
+        zoom,
+        project,
+        assets: &studio.assets,
+        resolver: &resolver,
+        preview_state,
+    };
+    renderer.draw(&layout, display.intersect(rect));
+    draw_display_frame(&painter, display, project.display.shape, background, rect);
+
+    studio.canvas.nodes = node_infos(&layout);
+    drop(layout);
+
+    let to_display = |p: Pos2| -> (i32, i32) {
+        let d = (p - origin) / zoom;
+        (d.x.floor() as i32, d.y.floor() as i32)
+    };
+    let screen_rect = |r: lay::Rect| {
+        Rect::from_min_size(origin + vec2(r.x as f32, r.y as f32) * zoom, vec2(r.w as f32, r.h as f32) * zoom)
+    };
+
+    draw_outlines(&painter, &studio.canvas.nodes, &screen_rect, &studio.settings);
+
+    // Hover and selection overlays.
+    let hovered = response.hover_pos().and_then(|p| {
+        let (x, y) = to_display(p);
+        studio.canvas.hit(x, y)
+    });
+    if let Some(i) = hovered {
+        let node = &studio.canvas.nodes[i];
+        if Some(node.id) != studio.selected && i != 0 {
+            painter.rect_stroke(
+                screen_rect(node.rect),
+                0,
+                Stroke::new(1.0_f32, ACCENT.gamma_multiply(0.6)),
+                StrokeKind::Outside,
+            );
+        }
+    }
+    let selected = studio.selected.and_then(|id| studio.canvas.node(id).map(|(i, n)| (i, n.clone())));
+    let handles = selected.as_ref().filter(|(_, n)| n.movable).map(|(_, n)| handle_rects(screen_rect(n.rect)));
+    if let Some((_, node)) = &selected {
+        let r = screen_rect(node.rect);
+        let stroke = if node.hidden { Stroke::new(1.0_f32, visuals::WARNING) } else { Stroke::new(1.5_f32, ACCENT) };
+        painter.rect_stroke(r, 0, stroke, StrokeKind::Outside);
+        if let Some(handles) = &handles {
+            for h in handles {
+                painter.rect_filled(*h, 2, Color32::WHITE);
+                painter.rect_stroke(*h, 2, Stroke::new(1.0_f32, ACCENT), StrokeKind::Inside);
+            }
+        }
+        let label = studio
+            .doc
+            .project
+            .widget(node.id)
+            .filter(|_| studio.settings.show_size_label)
+            .map(|w| format!("{}  {}×{}", w.name, node.rect.w, node.rect.h));
+        if let Some(label) = label {
+            let pos = r.left_top() - vec2(0.0, 4.0);
+            painter.text(pos, egui::Align2::LEFT_BOTTOM, label, egui::FontId::proportional(11.0), ACCENT);
+        }
+    }
+
+    // Cursor feedback.
+    if let (Some(handles), Some(p)) = (&handles, response.hover_pos()) {
+        if let Some(h) = handles.iter().position(|r| r.expand(2.0).contains(p)) {
+            ui.ctx().set_cursor_icon(handle_cursor(h));
+        }
+    }
+
+    interact(ui, studio, &response, handles, to_display, zoom);
+    drop_from_palette(ui, studio, &response, &to_display, &screen_rect, &painter);
+}
+
+fn interact(
+    ui: &egui::Ui,
+    studio: &mut Studio,
+    response: &egui::Response,
+    handles: Option<[Rect; 8]>,
+    to_display: impl Fn(Pos2) -> (i32, i32),
+    zoom: f32,
+) {
+    if response.clicked() {
+        if let Some(p) = response.interact_pointer_pos() {
+            let (x, y) = to_display(p);
+            studio.select(studio.canvas.hit(x, y).map(|i| studio.canvas.nodes[i].id).or(Some(studio.screen)));
+        }
+    }
+    if response.drag_started_by(PointerButton::Primary) {
+        let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or_default();
+        let handle = handles.and_then(|h| h.iter().position(|r| r.expand(2.0).contains(origin)));
+        let target = match handle {
+            Some(_) => studio.selected,
+            None => {
+                let (x, y) = to_display(origin);
+                let hit = studio.canvas.hit(x, y).map(|i| studio.canvas.nodes[i].id);
+                if hit != studio.selected {
+                    studio.select(hit);
+                }
+                hit
+            }
+        };
+        let info = target.and_then(|id| studio.canvas.node(id).map(|(_, n)| n.clone()));
+        let geometry = target.and_then(|id| studio.doc.project.widget(id)).map(|w| w.geometry);
+        if let (Some(node), Some(geometry)) = (info, geometry) {
+            if node.movable {
+                studio.canvas.drag = Some(match handle {
+                    Some(handle) => Drag::Resize { id: node.id, handle, start: node.rect, geometry },
+                    None => Drag::Move { id: node.id, start: node.rect, geometry },
+                });
+            } else if node.parent.is_some() {
+                studio.notify(tr("This widget is positioned by its parent (layout, tab or tile)."));
+            }
+        }
+    }
+    if let Some(drag) = studio.canvas.drag {
+        if response.dragged_by(PointerButton::Primary) {
+            let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or_default();
+            let current = response.interact_pointer_pos().unwrap_or(origin);
+            let delta = (current - origin) / zoom;
+            let (dx, dy) = (delta.x.round() as i32, delta.y.round() as i32);
+            let grid = studio.settings.snap_to_grid.then_some(studio.settings.grid_size.max(1) as i32);
+            let snap = |v: i32| grid.map_or(v, |g| (v as f32 / g as f32).round() as i32 * g);
+            let (id, rect, geometry, resized) = match drag {
+                Drag::Move { id, start, geometry } => {
+                    (id, lay::Rect { x: snap(start.x + dx), y: snap(start.y + dy), ..start }, geometry, false)
+                }
+                Drag::Resize { id, handle, start, geometry } => {
+                    (id, resize(start, handle, dx, dy, &snap), geometry, true)
+                }
+            };
+            let parent = studio.canvas.node(id).and_then(|(_, n)| n.parent).map(|p| studio.canvas.nodes[p].clone());
+            if let (Some(parent), Some(widget)) = (parent, studio.doc.project.widget_mut(id)) {
+                widget.geometry = geometry_for_rect(geometry, rect, &parent, resized);
+            }
+        } else {
+            studio.canvas.drag = None;
+        }
+    }
+}
+
+fn resize(start: lay::Rect, handle: usize, dx: i32, dy: i32, snap: &impl Fn(i32) -> i32) -> lay::Rect {
+    // Handles: 0 top-left, 1 top, 2 top-right, 3 right, 4 bottom-right, 5 bottom, 6 bottom-left, 7 left.
+    let (mut left, mut top, mut right, mut bottom) = (start.x, start.y, start.right(), start.bottom());
+    if matches!(handle, 0 | 6 | 7) {
+        left = snap(left + dx).min(right - 1);
+    }
+    if matches!(handle, 2..=4) {
+        right = snap(right + dx).max(left + 1);
+    }
+    if matches!(handle, 0..=2) {
+        top = snap(top + dy).min(bottom - 1);
+    }
+    if matches!(handle, 4..=6) {
+        bottom = snap(bottom + dy).max(top + 1);
+    }
+    lay::Rect::new(left, top, right - left, bottom - top)
+}
+
+fn handle_rects(r: Rect) -> [Rect; 8] {
+    let points = [
+        r.left_top(),
+        r.center_top(),
+        r.right_top(),
+        r.right_center(),
+        r.right_bottom(),
+        r.center_bottom(),
+        r.left_bottom(),
+        r.left_center(),
+    ];
+    points.map(|p| Rect::from_center_size(p, vec2(HANDLE, HANDLE)))
+}
+
+fn handle_cursor(handle: usize) -> CursorIcon {
+    match handle {
+        0 | 4 => CursorIcon::ResizeNwSe,
+        2 | 6 => CursorIcon::ResizeNeSw,
+        1 | 5 => CursorIcon::ResizeVertical,
+        _ => CursorIcon::ResizeHorizontal,
+    }
+}
+
+fn drop_from_palette(
+    ui: &egui::Ui,
+    studio: &mut Studio,
+    response: &egui::Response,
+    to_display: &impl Fn(Pos2) -> (i32, i32),
+    screen_rect: &impl Fn(lay::Rect) -> Rect,
+    painter: &egui::Painter,
+) {
+    let Some(pos) = ui.ctx().pointer_interact_pos().or_else(|| response.hover_pos()) else { return };
+    let target = |studio: &Studio, kind: WidgetKind| -> Option<usize> {
+        let (x, y) = to_display(pos);
+        let mut index = studio.canvas.hit(x, y).or(Some(0))?;
+        loop {
+            let node = &studio.canvas.nodes[index];
+            if node.kind.def().accepts_child(kind) {
+                return Some(index);
+            }
+            index = node.parent?;
+        }
+    };
+    if let Some(kind) = response.dnd_hover_payload::<WidgetKind>() {
+        if let Some(index) = target(studio, *kind) {
+            let r = screen_rect(studio.canvas.nodes[index].children_area);
+            painter.rect_stroke(r, 0, Stroke::new(2.0_f32, ACCENT), StrokeKind::Inside);
+        }
+    }
+    let Some(kind) = response.dnd_release_payload::<WidgetKind>() else { return };
+    let kind = *kind;
+    let Some(index) = target(studio, kind) else {
+        studio.notify(trf("{} cannot be placed here.", &[&tr(kind.name())]));
+        return;
+    };
+    let parent = studio.canvas.nodes[index].clone();
+    let (x, y) = to_display(pos);
+    let mut widget = studio.doc.project.new_widget(kind);
+    if !kind.def().managed_geometry {
+        let size = |c: Coord, reference: i32, fallback: i32| match c.unit {
+            Unit::Px => c.value,
+            Unit::Percent => reference * c.value / 100,
+            Unit::Content => fallback,
+        };
+        let w = size(widget.geometry.width, parent.children_area.w, 80);
+        let h = size(widget.geometry.height, parent.children_area.h, 30);
+        let rect = lay::Rect::new(x - w / 2, y - h / 2, w, h);
+        widget.geometry = geometry_for_rect(widget.geometry, rect, &parent, false);
+    }
+    let id = widget.id;
+    if studio.doc.project.insert(parent.id, usize::MAX, widget).is_ok() {
+        studio.select(Some(id));
+    }
+}
+
+fn handle_zoom_and_pan(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    rect: Rect,
+    view: &mut CanvasState,
+    width: i32,
+    height: i32,
+) {
+    let pointer = response.hover_pos();
+    let (zoom_delta, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
+    if let Some(p) = pointer {
+        if zoom_delta != 1.0 {
+            view.auto_fit = false;
+            let old = view.zoom;
+            view.zoom = (view.zoom * zoom_delta).clamp(0.1, 16.0);
+            // Keep the point under the cursor fixed.
+            let display_center = rect.center() + view.pan;
+            let offset = p - display_center;
+            view.pan += offset - offset * (view.zoom / old);
+        } else if scroll != Vec2::ZERO {
+            view.auto_fit = false;
+            view.pan += scroll;
+        }
+    }
+    if response.dragged_by(PointerButton::Middle)
+        || (response.dragged_by(PointerButton::Primary) && ui.input(|i| i.key_down(egui::Key::Space)))
+    {
+        view.auto_fit = false;
+        view.pan += response.drag_delta();
+    }
+    let limit = vec2(width as f32, height as f32) * view.zoom + rect.size();
+    view.pan = view.pan.clamp(-limit / 2.0, limit / 2.0);
+}
+
+/// Paints the area around the display and returns the color used for
+/// masking round displays.
+fn draw_background(painter: &egui::Painter, rect: Rect, background: CanvasBackground, theme: Color32) -> Color32 {
+    let (base, alternate) = match background {
+        CanvasBackground::Theme => (theme, None),
+        CanvasBackground::Dark => (Color32::from_rgb(0x0F, 0x11, 0x15), None),
+        CanvasBackground::Light => (Color32::from_rgb(0xE4, 0xE7, 0xEC), None),
+        CanvasBackground::Checkerboard => (Color32::from_gray(0x9A), Some(Color32::from_gray(0x7A))),
+    };
+    painter.rect_filled(rect, 0, base);
+    if let Some(alternate) = alternate {
+        const TILE: f32 = 12.0;
+        let (columns, rows) = ((rect.width() / TILE).ceil() as i32, (rect.height() / TILE).ceil() as i32);
+        for row in 0..rows {
+            for column in (0..columns).filter(|c| (c + row) % 2 == 0) {
+                let min = rect.min + vec2(column as f32, row as f32) * TILE;
+                painter.rect_filled(Rect::from_min_size(min, vec2(TILE, TILE)), 0, alternate);
+            }
+        }
+    }
+    base
+}
+
+/// Optional outlines of all widgets and of hidden widgets.
+fn draw_outlines(
+    painter: &egui::Painter,
+    nodes: &[NodeInfo],
+    screen_rect: &impl Fn(lay::Rect) -> Rect,
+    settings: &AppSettings,
+) {
+    for node in nodes.iter().skip(1) {
+        let r = screen_rect(node.rect);
+        if node.hidden {
+            if settings.show_hidden {
+                let stroke = Stroke::new(1.0_f32, visuals::WARNING.gamma_multiply(0.7));
+                let corners = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+                painter.extend(egui::Shape::dashed_line(&corners, stroke, 4.0, 3.0));
+            }
+        } else if settings.show_bounds {
+            painter.rect_stroke(r, 0, Stroke::new(1.0_f32, ACCENT.gamma_multiply(0.35)), StrokeKind::Inside);
+        }
+    }
+}
+
+fn draw_grid(painter: &egui::Painter, display: Rect, zoom: f32, step: f32, color: Color32) {
+    let step = step * zoom;
+    if step < 4.0 {
+        return;
+    }
+    let mut x = display.left();
+    while x <= display.right() {
+        painter.line_segment([pos2(x, display.top()), pos2(x, display.bottom())], Stroke::new(1.0_f32, color));
+        x += step;
+    }
+    let mut y = display.top();
+    while y <= display.bottom() {
+        painter.line_segment([pos2(display.left(), y), pos2(display.right(), y)], Stroke::new(1.0_f32, color));
+        y += step;
+    }
+}
+
+/// Masks everything outside a round display and draws the bezel outline.
+fn draw_display_frame(painter: &egui::Painter, display: Rect, shape: DisplayShape, background: Color32, clip: Rect) {
+    let outline = Stroke::new(1.0_f32, Color32::from_gray(110));
+    match shape {
+        DisplayShape::Round => {
+            let center = display.center();
+            let inner = display.width().min(display.height()) / 2.0;
+            let outer = (clip.size().length() + display.size().length()) * 2.0;
+            painter.add(ring(center, inner, outer, background));
+            painter.circle_stroke(center, inner, outline);
+        }
+        DisplayShape::Rectangle => {
+            painter.rect_stroke(display, 0, outline, StrokeKind::Outside);
+        }
+    }
+}
+
+/// A filled annulus between two radii.
+fn ring(center: Pos2, inner: f32, outer: f32, color: Color32) -> egui::Shape {
+    const STEPS: u32 = 128;
+    let mut mesh = egui::Mesh::default();
+    for i in 0..STEPS {
+        let angle = i as f32 / STEPS as f32 * std::f32::consts::TAU;
+        let dir = vec2(angle.cos(), angle.sin());
+        mesh.colored_vertex(center + dir * inner, color);
+        mesh.colored_vertex(center + dir * outer, color);
+    }
+    for i in 0..STEPS {
+        let (a, b) = (2 * i, 2 * ((i + 1) % STEPS));
+        mesh.add_triangle(a, a + 1, b);
+        mesh.add_triangle(a + 1, b + 1, b);
+    }
+    egui::Shape::mesh(mesh)
+}
+
+fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
+    layout
+        .nodes
+        .iter()
+        .map(|n| {
+            let parent_flex = n.parent.is_some_and(|p| layout.nodes[p].widget.layout.is_some())
+                && !n.widget.flag(lvglab_model::flags::ObjFlag::IgnoreLayout)
+                && !n.widget.flag(lvglab_model::flags::ObjFlag::Floating);
+            NodeInfo {
+                id: n.widget.id,
+                kind: n.widget.kind,
+                rect: n.rect,
+                clip: n.clip,
+                children_area: n.children_area,
+                parent: n.parent,
+                hidden: n.hidden,
+                movable: n.parent.is_some() && !n.widget.def().managed_geometry && !parent_flex,
+            }
+        })
+        .collect()
+}
+
+fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
+    ui.horizontal(|ui| {
+        let current = studio.doc.project.widget(studio.screen).map(|s| s.name.clone()).unwrap_or_default();
+        let screens: Vec<(WidgetId, String)> =
+            studio.doc.project.screens.iter().map(|s| (s.id, s.name.clone())).collect();
+        egui::ComboBox::from_id_salt("canvas_screen").selected_text(format!("▣ {current}")).width(150.0).show_ui(
+            ui,
+            |ui| {
+                for (id, name) in screens {
+                    if ui.selectable_label(studio.screen == id, name).clicked() {
+                        studio.select_screen(id);
+                    }
+                }
+            },
+        );
+        if ui.button("+").on_hover_text(tr("Add screen")).clicked() {
+            studio.push(crate::commands::Command::AddScreen);
+        }
+        ui.separator();
+        let view = &mut studio.canvas;
+        if ui.button("-").clicked() {
+            view.zoom = (view.zoom / 1.25).max(0.1);
+            view.auto_fit = false;
+        }
+        if ui.button(format!("{:.0}%", view.zoom * 100.0)).on_hover_text("100%").clicked() {
+            view.zoom = 1.0;
+            view.pan = Vec2::ZERO;
+            view.auto_fit = false;
+        }
+        if ui.button("+").clicked() {
+            view.zoom = (view.zoom * 1.25).min(16.0);
+            view.auto_fit = false;
+        }
+        if ui.button(tr("Fit")).on_hover_text(tr("Fit display into view")).clicked() {
+            view.fit_pending = true;
+            view.auto_fit = true;
+        }
+        ui.separator();
+        let s = &mut studio.settings;
+        ui.toggle_value(&mut s.show_grid, tr("Grid"));
+        ui.toggle_value(&mut s.snap_to_grid, tr("Snap")).on_hover_text(tr("Snap to grid while moving"));
+    });
+}

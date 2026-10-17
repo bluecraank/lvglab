@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+.vscode/
+.idea/
+# Local SquareLine projects used for testing (not part of the repository)
+/spj/
+# Library exports
+export/
+dist/
