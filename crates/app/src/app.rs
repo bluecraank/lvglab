@@ -1,0 +1,638 @@
+//! Application frame: studio state, docking layout, menus and shortcuts.
+
+use std::path::PathBuf;
+
+use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, ViewportCommand};
+use egui_dock::{DockArea, DockState, NodeIndex, TabViewer};
+use lvglab_model::flags::StateMask;
+use lvglab_model::{Project, Widget, WidgetId};
+
+use crate::LaunchOptions;
+use crate::canvas::CanvasState;
+use crate::canvas::assets::AssetCache;
+use crate::commands::Command;
+use crate::dialogs;
+use crate::document::{Document, Timeline};
+use crate::i18n::{self, tr};
+use crate::modal::{self, Action, Tone};
+use crate::panels::{self, Panel};
+use crate::settings::{AppSettings, STORAGE_KEY};
+use crate::visuals;
+
+const DOCK_KEY: &str = "lvglab.dock";
+
+/// A list of messages shown in a dialog (import/export results, errors).
+pub struct Report {
+    pub tone: crate::modal::Tone,
+    pub title: String,
+    pub message: String,
+    pub lines: Vec<String>,
+}
+
+/// Everything the panels work on.
+pub struct Studio {
+    pub doc: Document,
+    pub timeline: Timeline,
+    pub selected: Option<WidgetId>,
+    /// The screen shown on the canvas.
+    pub screen: WidgetId,
+    pub canvas: CanvasState,
+    pub style_slot: String,
+    pub style_state: StateMask,
+    pub clipboard: Option<Widget>,
+    pub commands: Vec<Command>,
+    pub status: Option<String>,
+    pub report: Option<Report>,
+    pub confirm_discard: Option<Command>,
+    pub settings: AppSettings,
+    pub assets: AssetCache,
+    pub show_project_settings: bool,
+    pub show_preferences: bool,
+    pub show_about: bool,
+    pub layer_filter: String,
+    pub palette_filter: String,
+    /// Set by the preferences to restore the default panel layout.
+    pub reset_layout: bool,
+}
+
+impl Studio {
+    fn new(settings: AppSettings) -> Self {
+        let project = Project::new("MyProject");
+        let screen = project.screens[0].id;
+        Self {
+            timeline: Timeline::new(&project, tr("New project")),
+            doc: Document::new(project, None),
+            selected: Some(screen),
+            screen,
+            canvas: CanvasState::default(),
+            style_slot: "main".to_owned(),
+            style_state: StateMask::DEFAULT,
+            clipboard: None,
+            commands: Vec::new(),
+            status: None,
+            report: None,
+            confirm_discard: None,
+            settings,
+            assets: AssetCache::default(),
+            show_project_settings: false,
+            show_preferences: false,
+            show_about: false,
+            layer_filter: String::new(),
+            palette_filter: String::new(),
+            reset_layout: false,
+        }
+    }
+
+    pub fn push(&mut self, command: Command) {
+        self.commands.push(command);
+    }
+
+    pub fn notify(&mut self, message: impl Into<String>) {
+        self.status = Some(message.into());
+    }
+
+    pub fn project(&self) -> &Project {
+        &self.doc.project
+    }
+
+    pub fn selected_widget(&self) -> Option<&Widget> {
+        self.selected.and_then(|id| self.doc.project.widget(id))
+    }
+
+    /// Selects a widget and shows its screen on the canvas.
+    pub fn select(&mut self, id: Option<WidgetId>) {
+        self.selected = id;
+        if let Some(screen) = id.and_then(|id| self.doc.project.screen_of(id)) {
+            if screen.id != self.screen {
+                self.screen = screen.id;
+            }
+        }
+        let has_slot = self.selected_widget().is_some_and(|w| w.def().slot(&self.style_slot).is_some());
+        if !has_slot {
+            self.style_slot = "main".to_owned();
+        }
+    }
+
+    pub fn select_screen(&mut self, id: WidgetId) {
+        self.screen = id;
+        self.select(Some(id));
+    }
+}
+
+pub struct StudioApp {
+    studio: Studio,
+    dock: DockState<Panel>,
+    screenshot: Option<PathBuf>,
+    frame: u64,
+    last_typing: f64,
+    close_confirmed: bool,
+    show_close_confirm: bool,
+    title: String,
+    last_autosave: f64,
+}
+
+impl StudioApp {
+    pub fn new(cc: &eframe::CreationContext<'_>, options: LaunchOptions) -> Self {
+        visuals::install(&cc.egui_ctx);
+        let mut settings: AppSettings = cc.storage.and_then(|s| eframe::get_value(s, STORAGE_KEY)).unwrap_or_default();
+        settings.sanitize();
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        cc.egui_ctx.set_zoom_factor(settings.ui_scale);
+        let dock = cc
+            .storage
+            .and_then(|s| eframe::get_value::<DockState<Panel>>(s, DOCK_KEY))
+            .filter(|d| d.find_tab(&Panel::Canvas).is_some())
+            .unwrap_or_else(default_layout);
+        i18n::set_language(settings.language);
+        visuals::apply_appearance(&cc.egui_ctx, settings.appearance);
+        let reopen = settings.reopen_last.then(|| settings.recent.first().cloned()).flatten().filter(|p| p.exists());
+        let mut studio = Studio::new(settings);
+        if let Some(file) = options.file.or(reopen) {
+            studio.execute(Command::OpenPath(file), true);
+        }
+        if let Some(name) = options.select {
+            let id = studio.doc.project.all_widgets().iter().find(|w| w.name == name).map(|w| w.id);
+            studio.select(id);
+            studio.report = None;
+        }
+        let dialog = options.dialog.as_deref();
+        studio.show_preferences = dialog == Some("preferences");
+        studio.show_about = dialog == Some("about");
+        if dialog == Some("discard") {
+            studio.confirm_discard = Some(Command::NewProject);
+        }
+        Self {
+            studio,
+            dock,
+            screenshot: options.screenshot,
+            frame: 0,
+            last_typing: 0.0,
+            close_confirmed: false,
+            show_close_confirm: dialog == Some("close"),
+            title: String::new(),
+            last_autosave: 0.0,
+        }
+    }
+
+    /// Applies preferences that live outside the studio state.
+    fn apply_settings(&mut self, ctx: &egui::Context) {
+        let settings = &self.studio.settings;
+        if (ctx.zoom_factor() - settings.ui_scale).abs() > f32::EPSILON {
+            ctx.set_zoom_factor(settings.ui_scale);
+        }
+        self.studio.timeline.set_limit(settings.history_limit);
+        if std::mem::take(&mut self.studio.reset_layout) {
+            self.dock = default_layout();
+        }
+    }
+
+    /// Writes `<name>.backup.lvglab` next to a saved project with unsaved changes.
+    fn autosave(&mut self, ctx: &egui::Context) {
+        let minutes = self.studio.settings.autosave_minutes;
+        let now = ctx.input(|i| i.time);
+        if minutes == 0 || !self.studio.doc.is_dirty() || now - self.last_autosave < f64::from(minutes) * 60.0 {
+            return;
+        }
+        self.last_autosave = now;
+        let Some(path) = self.studio.doc.path.clone() else { return };
+        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let backup = path.with_file_name(format!("{stem}.backup.{}", lvglab_model::project::PROJECT_EXTENSION));
+        match self.studio.doc.project.save(&backup) {
+            Ok(()) => self.studio.notify(crate::i18n::trf("Backup saved to {}", &[&backup.display()])),
+            Err(err) => self.studio.notify(err.to_string()),
+        }
+    }
+
+    fn top_bar(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::top("menu").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                self.file_menu(ui);
+                self.edit_menu(ui);
+                self.view_menu(ui);
+                ui.menu_button(tr("Help"), |ui| {
+                    if ui.button(tr("About LVGLab")).clicked() {
+                        self.studio.show_about = true;
+                        ui.close_menu();
+                    }
+                });
+            });
+        });
+        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                let s = &mut self.studio;
+                let mut button = |ui: &mut egui::Ui, text: &str, tip: &str, command: Command| {
+                    if ui.button(text).on_hover_text(tip).clicked() {
+                        s.push(command);
+                    }
+                };
+                button(ui, tr("New"), "Ctrl+N", Command::NewProject);
+                button(ui, tr("Open"), "Ctrl+O", Command::Open);
+                button(ui, tr("Save"), "Ctrl+S", Command::Save);
+                ui.separator();
+                let (undo, redo) = (s.timeline.can_undo(), s.timeline.can_redo());
+                if ui
+                    .add_enabled(undo, egui::Button::new("⟲"))
+                    .on_hover_text(format!("{} (Ctrl+Z)", tr("Undo")))
+                    .clicked()
+                {
+                    s.push(Command::Undo);
+                }
+                if ui
+                    .add_enabled(redo, egui::Button::new("⟳"))
+                    .on_hover_text(format!("{} (Ctrl+Y)", tr("Redo")))
+                    .clicked()
+                {
+                    s.push(Command::Redo);
+                }
+                ui.separator();
+                if ui.button(tr("Import SquareLine")).on_hover_text("Ctrl+I").clicked() {
+                    s.push(Command::ImportSquareLine);
+                }
+                let export = egui::Button::new(egui::RichText::new(tr("Export library")).color(egui::Color32::WHITE))
+                    .fill(visuals::ACCENT);
+                if ui.add(export).on_hover_text("Ctrl+E").clicked() {
+                    s.push(Command::ExportLibrary);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(tr("Project settings")).clicked() {
+                        s.show_project_settings = true;
+                    }
+                    ui.label(egui::RichText::new(s.doc.title()).strong());
+                });
+            });
+            ui.add_space(2.0);
+        });
+    }
+
+    fn file_menu(&mut self, ui: &mut egui::Ui) {
+        let s = &mut self.studio;
+        ui.menu_button(tr("File"), |ui| {
+            let mut item = |ui: &mut egui::Ui, text: &str, shortcut: &str, command: Command| {
+                if ui.add(egui::Button::new(text).shortcut_text(shortcut)).clicked() {
+                    s.push(command);
+                    ui.close_menu();
+                }
+            };
+            item(ui, tr("New project"), "Ctrl+N", Command::NewProject);
+            item(ui, tr("Open…"), "Ctrl+O", Command::Open);
+            item(ui, tr("Import SquareLine project…"), "Ctrl+I", Command::ImportSquareLine);
+            ui.separator();
+            item(ui, tr("Save"), "Ctrl+S", Command::Save);
+            item(ui, tr("Save as…"), "Ctrl+Shift+S", Command::SaveAs);
+            item(ui, tr("Export library"), "Ctrl+E", Command::ExportLibrary);
+            ui.separator();
+            let recent = s.settings.recent.clone();
+            ui.add_enabled_ui(!recent.is_empty(), |ui| {
+                ui.menu_button(tr("Open recent"), |ui| {
+                    for path in recent {
+                        if ui.button(path.display().to_string()).clicked() {
+                            s.push(Command::OpenPath(path));
+                            ui.close_menu();
+                        }
+                    }
+                });
+            });
+            ui.separator();
+            if ui.button(tr("Project settings…")).clicked() {
+                s.show_project_settings = true;
+                ui.close_menu();
+            }
+            if ui.button(tr("Quit")).clicked() {
+                ui.ctx().send_viewport_cmd(ViewportCommand::Close);
+                ui.close_menu();
+            }
+        });
+    }
+
+    fn edit_menu(&mut self, ui: &mut egui::Ui) {
+        let s = &mut self.studio;
+        let selected = s.selected;
+        ui.menu_button(tr("Edit"), |ui| {
+            let mut item = |ui: &mut egui::Ui, text: &str, shortcut: &str, enabled: bool, command: Option<Command>| {
+                if ui.add_enabled(enabled, egui::Button::new(text).shortcut_text(shortcut)).clicked() {
+                    if let Some(command) = command {
+                        s.push(command);
+                    }
+                    ui.close_menu();
+                }
+            };
+            item(ui, tr("Undo"), "Ctrl+Z", true, Some(Command::Undo));
+            item(ui, tr("Redo"), "Ctrl+Y", true, Some(Command::Redo));
+            ui.separator();
+            item(ui, tr("Cut"), "Ctrl+X", selected.is_some(), selected.map(Command::Cut));
+            item(ui, tr("Copy"), "Ctrl+C", selected.is_some(), selected.map(Command::Copy));
+            item(ui, tr("Paste"), "Ctrl+V", true, Some(Command::Paste));
+            item(ui, tr("Duplicate"), "Ctrl+D", selected.is_some(), selected.map(Command::Duplicate));
+            item(ui, tr("Delete"), "Del", selected.is_some(), selected.map(Command::Delete));
+            ui.separator();
+            item(ui, tr("Add screen"), "", true, Some(Command::AddScreen));
+            ui.separator();
+            if ui.button(tr("Preferences…")).clicked() {
+                s.show_preferences = true;
+                ui.close_menu();
+            }
+        });
+    }
+
+    fn view_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button(tr("View"), |ui| {
+            for panel in Panel::ALL.iter().copied().filter(|p| *p != Panel::Canvas) {
+                let found = self.dock.find_tab(&panel);
+                let mut visible = found.is_some();
+                if ui.checkbox(&mut visible, tr(panel.title())).changed() {
+                    match found {
+                        Some(location) => {
+                            self.dock.remove_tab(location);
+                        }
+                        None => self.dock.push_to_focused_leaf(panel),
+                    }
+                }
+            }
+            ui.separator();
+            if ui.button(tr("Reset layout")).clicked() {
+                self.dock = default_layout();
+                ui.close_menu();
+            }
+            ui.separator();
+            let s = &mut self.studio;
+            ui.checkbox(&mut s.settings.show_grid, tr("Grid"));
+            ui.checkbox(&mut s.settings.snap_to_grid, tr("Snap to grid"));
+            if ui.button(tr("Fit display into view")).clicked() {
+                s.canvas.fit_pending = true;
+                ui.close_menu();
+            }
+        });
+    }
+
+    fn status_bar(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let s = &self.studio;
+                ui.label(egui::RichText::new(s.status.as_deref().unwrap_or(tr("Ready"))).small());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let p = s.project();
+                    let widgets: usize = p.screens.iter().map(|s| s.descendant_count()).sum();
+                    let shape = tr(p.display.shape.label());
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "LVGL {} · {}×{} {} · {} {} · {} {}",
+                            p.lvgl_version.suffix(),
+                            p.display.width,
+                            p.display.height,
+                            shape,
+                            p.screens.len(),
+                            tr("screens"),
+                            widgets,
+                            tr("widgets")
+                        ))
+                        .small(),
+                    );
+                });
+            });
+        });
+    }
+
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        let typing = ctx.wants_keyboard_input();
+        let shortcut = |modifiers: Modifiers, key: Key| {
+            ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(modifiers, key)))
+        };
+        let s = &mut self.studio;
+        let ctrl = Modifiers::COMMAND;
+        let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+        if shortcut(ctrl, Key::S) {
+            s.push(Command::Save);
+        }
+        if shortcut(ctrl_shift, Key::S) {
+            s.push(Command::SaveAs);
+        }
+        if shortcut(ctrl, Key::O) {
+            s.push(Command::Open);
+        }
+        if shortcut(ctrl, Key::N) {
+            s.push(Command::NewProject);
+        }
+        if shortcut(ctrl, Key::I) {
+            s.push(Command::ImportSquareLine);
+        }
+        if shortcut(ctrl, Key::E) {
+            s.push(Command::ExportLibrary);
+        }
+        if typing {
+            return;
+        }
+        if shortcut(ctrl_shift, Key::Z) || shortcut(ctrl, Key::Y) {
+            s.push(Command::Redo);
+        }
+        if shortcut(ctrl, Key::Z) {
+            s.push(Command::Undo);
+        }
+        if shortcut(ctrl, Key::V) {
+            s.push(Command::Paste);
+        }
+        let Some(id) = s.selected else { return };
+        if shortcut(ctrl, Key::C) {
+            s.push(Command::Copy(id));
+        }
+        if shortcut(ctrl, Key::X) {
+            s.push(Command::Cut(id));
+        }
+        if shortcut(ctrl, Key::D) {
+            s.push(Command::Duplicate(id));
+        }
+        if shortcut(Modifiers::NONE, Key::Delete) {
+            s.push(Command::Delete(id));
+        }
+        let step = if ctx.input(|i| i.modifiers.shift) { s.settings.nudge_large as i32 } else { 1 };
+        let mut nudge = |key: Key, dx: i32, dy: i32| {
+            let pressed =
+                ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key) || i.consume_key(Modifiers::SHIFT, key));
+            if pressed {
+                if let Some(geometry) = s.canvas.nudged(&s.doc.project, id, dx * step, dy * step) {
+                    if let Some(widget) = s.doc.project.widget_mut(id) {
+                        widget.geometry = geometry;
+                    }
+                }
+            }
+        };
+        nudge(Key::ArrowLeft, -1, 0);
+        nudge(Key::ArrowRight, 1, 0);
+        nudge(Key::ArrowUp, 0, -1);
+        nudge(Key::ArrowDown, 0, 1);
+    }
+
+    /// Records a timeline entry once an interaction has finished.
+    fn observe_changes(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        let typed = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { .. })));
+        if typed {
+            self.last_typing = now;
+        }
+        let pointer_down = ctx.input(|i| i.pointer.any_down());
+        let editing_text = ctx.wants_keyboard_input() && now - self.last_typing < 0.8;
+        if !pointer_down && !editing_text && !self.studio.canvas.is_dragging() {
+            self.studio.timeline.observe(&self.studio.doc.project);
+        } else if editing_text {
+            ctx.request_repaint_after(std::time::Duration::from_millis(900));
+        }
+    }
+
+    fn handle_close(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.viewport().close_requested()) && self.studio.doc.is_dirty() && !self.close_confirmed {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.show_close_confirm = true;
+        }
+        if !self.show_close_confirm {
+            return;
+        }
+        let actions =
+            [Action::primary(tr("Save")), Action::danger(tr("Quit without saving")), Action::secondary(tr("Cancel"))];
+        let message = tr("Your changes to this project will be lost if you quit without saving.");
+        let choice = modal::show(
+            ctx,
+            "close_confirm",
+            Tone::Warning,
+            tr("Save changes before quitting?"),
+            message,
+            &actions,
+            |_| {},
+        );
+        match choice {
+            Some(0) => {
+                self.studio.execute(Command::Save, false);
+                self.show_close_confirm = false;
+                if !self.studio.doc.is_dirty() {
+                    self.close_confirmed = true;
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+            Some(1) => {
+                self.show_close_confirm = false;
+                self.close_confirmed = true;
+                ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
+            Some(_) => self.show_close_confirm = false,
+            None => {}
+        }
+    }
+
+    fn screenshot(&mut self, ctx: &egui::Context) {
+        let Some(path) = &self.screenshot else { return };
+        if self.frame == 20 {
+            ctx.send_viewport_cmd(ViewportCommand::Screenshot(Default::default()));
+        }
+        let image = ctx.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(image) = image {
+            let [w, h] = image.size;
+            let bytes: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+            if let Some(buffer) = ::image::RgbaImage::from_raw(w as u32, h as u32, bytes) {
+                if let Err(err) = buffer.save(path) {
+                    eprintln!("screenshot failed: {err}");
+                }
+            }
+            self.close_confirmed = true;
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+        ctx.request_repaint();
+    }
+}
+
+impl eframe::App for StudioApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.frame += 1;
+        self.apply_settings(ctx);
+        let dir = self.studio.doc.dir().map(std::path::Path::to_path_buf);
+        self.studio.assets.begin_frame(ctx, &self.studio.doc.project, dir.as_deref());
+
+        self.top_bar(ctx);
+        self.status_bar(ctx);
+        let style = dock_style(ctx);
+        DockArea::new(&mut self.dock)
+            .style(style)
+            .show_leaf_collapse_buttons(false)
+            .show_leaf_close_all_buttons(false)
+            .show(ctx, &mut Viewer { studio: &mut self.studio });
+        dialogs::show(ctx, &mut self.studio);
+        self.shortcuts(ctx);
+
+        for command in std::mem::take(&mut self.studio.commands) {
+            self.studio.execute(command, false);
+        }
+        self.observe_changes(ctx);
+        self.autosave(ctx);
+        self.handle_close(ctx);
+
+        let title = format!("{} — LVGLab", self.studio.doc.title());
+        if title != self.title {
+            ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
+        self.screenshot(ctx);
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, STORAGE_KEY, &self.studio.settings);
+        eframe::set_value(storage, DOCK_KEY, &self.dock);
+    }
+}
+
+struct Viewer<'a> {
+    studio: &'a mut Studio,
+}
+
+impl TabViewer for Viewer<'_> {
+    type Tab = Panel;
+
+    fn title(&mut self, tab: &mut Panel) -> egui::WidgetText {
+        tr(tab.title()).into()
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Panel) {
+        panels::show(*tab, ui, self.studio);
+    }
+
+    fn closeable(&mut self, tab: &mut Panel) -> bool {
+        *tab != Panel::Canvas
+    }
+
+    fn scroll_bars(&self, tab: &Panel) -> [bool; 2] {
+        match tab {
+            Panel::Canvas | Panel::Timeline => [false, false],
+            _ => [false, true],
+        }
+    }
+}
+
+fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
+    let mut style = egui_dock::Style::from_egui(&ctx.style());
+    style.tab_bar.height = 28.0;
+    style.tab_bar.corner_radius = egui::CornerRadius::ZERO;
+    style.tab.tab_body.inner_margin = egui::Margin::same(8);
+    style.tab.active.text_color = ctx.style().visuals.strong_text_color();
+    style.tab.focused.text_color = ctx.style().visuals.strong_text_color();
+    style.tab.hline_below_active_tab_name = true;
+    style.overlay.selection_color = visuals::ACCENT.gamma_multiply(0.4);
+    style
+}
+
+/// Default arrangement: structure on the left, canvas with timeline in the
+/// middle, parameters on the right.
+pub fn default_layout() -> DockState<Panel> {
+    let mut dock = DockState::new(vec![Panel::Canvas]);
+    let tree = dock.main_surface_mut();
+    let [center, right] =
+        tree.split_right(NodeIndex::root(), 0.76, vec![Panel::Parameters, Panel::Style, Panel::Events]);
+    // The fraction is the share of the first (left/top) node of a split.
+    let [center, left] = tree.split_left(center, 0.24, vec![Panel::Screens]);
+    let [_, layers] = tree.split_below(left, 0.22, vec![Panel::Layers]);
+    tree.split_below(layers, 0.5, vec![Panel::Widgets]);
+    tree.split_below(center, 0.82, vec![Panel::Timeline]);
+    tree.split_below(right, 0.66, vec![Panel::Fonts, Panel::Images]);
+    dock
+}

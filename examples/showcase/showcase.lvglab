@@ -1,0 +1,214 @@
+{
+  "format_version": 1,
+  "name": "Showcase",
+  "lvgl_version": "8.3.11",
+  "display": {
+    "width": 480,
+    "height": 320,
+    "shape": "RECTANGLE"
+  },
+  "theme": {
+    "dark": true,
+    "primary": "BLUE",
+    "secondary": "RED"
+  },
+  "export": {
+    "library_name": "ui",
+    "directory": "export"
+  },
+  "assets": {
+    "images": [
+      {
+        "name": "gradient",
+        "path": "gradient.png"
+      }
+    ],
+    "fonts": []
+  },
+  "screens": [
+    {
+      "id": 1,
+      "kind": "screen",
+      "name": "Screen1",
+      "geometry": {
+        "x": "0",
+        "y": "0",
+        "width": "100%",
+        "height": "100%",
+        "align": "TOP_LEFT"
+      },
+      "children": [
+        {
+          "id": 2,
+          "kind": "label",
+          "name": "Label1",
+          "geometry": {
+            "x": "0",
+            "y": "12",
+            "width": "content",
+            "height": "content",
+            "align": "TOP_MID"
+          },
+          "props": {
+            "text": {
+              "text": "Grüße aus LVGL °C"
+            }
+          },
+          "styles": [
+            {
+              "slot": "main",
+              "state": "DEFAULT",
+              "props": {
+                "text_font": {
+                  "font": "montserrat_28"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "kind": "image",
+          "name": "Image1",
+          "geometry": {
+            "x": "20",
+            "y": "60",
+            "width": "content",
+            "height": "content",
+            "align": "TOP_LEFT"
+          },
+          "props": {
+            "src": {
+              "image": "gradient"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "kind": "arc",
+          "name": "Arc1",
+          "geometry": {
+            "x": "-20",
+            "y": "60",
+            "width": "110",
+            "height": "110",
+            "align": "TOP_RIGHT"
+          },
+          "props": {
+            "value": {
+              "int": 65
+            }
+          }
+        },
+        {
+          "id": 5,
+          "kind": "slider",
+          "name": "Slider1",
+          "geometry": {
+            "x": "0",
+            "y": "-10",
+            "width": "150",
+            "height": "10",
+            "align": "CENTER"
+          },
+          "props": {
+            "value": {
+              "int": 40
+            }
+          }
+        },
+        {
+          "id": 6,
+          "kind": "bar",
+          "name": "Bar1",
+          "geometry": {
+            "x": "0",
+            "y": "25",
+            "width": "150",
+            "height": "10",
+            "align": "CENTER"
+          },
+          "props": {
+            "value": {
+              "int": 70
+            }
+          }
+        },
+        {
+          "id": 7,
+          "kind": "switch",
+          "name": "Switch1",
+          "geometry": {
+            "x": "20",
+            "y": "-70",
+            "width": "50",
+            "height": "25",
+            "align": "BOTTOM_LEFT"
+          },
+          "states": [
+            "CHECKED"
+          ]
+        },
+        {
+          "id": 8,
+          "kind": "checkbox",
+          "name": "Checkbox1",
+          "geometry": {
+            "x": "90",
+            "y": "-70",
+            "width": "content",
+            "height": "content",
+            "align": "BOTTOM_LEFT"
+          },
+          "states": [
+            "CHECKED"
+          ]
+        },
+        {
+          "id": 9,
+          "kind": "button",
+          "name": "Button1",
+          "geometry": {
+            "x": "0",
+            "y": "-15",
+            "width": "140",
+            "height": "50",
+            "align": "BOTTOM_MID"
+          },
+          "children": [
+            {
+              "id": 10,
+              "kind": "label",
+              "name": "Button1Label",
+              "geometry": {
+                "x": "0",
+                "y": "0",
+                "width": "content",
+                "height": "content",
+                "align": "CENTER"
+              },
+              "props": {
+                "text": {
+                  "text": "Button1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "kind": "dropdown",
+          "name": "Dropdown1",
+          "geometry": {
+            "x": "-20",
+            "y": "-70",
+            "width": "130",
+            "height": "content",
+            "align": "BOTTOM_RIGHT"
+          }
+        }
+      ]
+    }
+  ],
+  "next_id": 12
+}

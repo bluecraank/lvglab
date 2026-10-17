@@ -1,0 +1,28 @@
+[package]
+name = "lvglab"
+description = "A modern UI designer for LVGL 8 on ESP32 with TFT_eSPI, with SquareLine Studio import."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "lvglab"
+path = "src/main.rs"
+
+[dependencies]
+lvglab-model.workspace = true
+lvglab-spj.workspace = true
+lvglab-codegen.workspace = true
+lvglab-ai.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+rfd = "0.15"
+egui_dock = { version = "0.16", features = ["serde"] }
+sys-locale = "0.3"
+
+[lints]
+workspace = true

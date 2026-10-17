@@ -1,0 +1,19 @@
+[package]
+name = "lvglab-codegen"
+description = "LVGL 8 C code and PlatformIO (ESP32 + TFT_eSPI) project generator of LVGLab."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lvglab-model.workspace = true
+thiserror.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+fontdue = "0.9"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+lvglab-spj.workspace = true
