@@ -213,15 +213,24 @@ impl StudioApp {
         }
     }
 
-    /// Writes `<name>.backup.lvglab` next to a saved project with unsaved changes.
+    /// Saves a project with unsaved changes periodically: the project file
+    /// itself (marked in the timeline) or `<name>.backup.lvglab` next to it.
     fn autosave(&mut self, ctx: &egui::Context) {
         let minutes = self.studio.settings.autosave_minutes;
         let now = ctx.input(|i| i.time);
         if minutes == 0 || !self.studio.doc.is_dirty() || now - self.last_autosave < f64::from(minutes) * 60.0 {
             return;
         }
+        // Wait until the current interaction is finished.
+        if self.studio.canvas.is_dragging() || ctx.wants_keyboard_input() || ctx.input(|i| i.pointer.any_down()) {
+            return;
+        }
         self.last_autosave = now;
         let Some(path) = self.studio.doc.path.clone() else { return };
+        if self.studio.settings.autosave_project {
+            self.studio.save_to(path, crate::document::EntryKind::Autosaved);
+            return;
+        }
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let backup = path.with_file_name(format!("{stem}.backup.{}", lvglab_model::project::PROJECT_EXTENSION));
         match self.studio.doc.project.save(&backup) {

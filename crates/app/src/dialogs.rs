@@ -322,12 +322,18 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     label(ui, tr("Timeline length"), tr("Older steps are dropped."));
                     ui.add(egui::DragValue::new(&mut s.history_limit).range(20..=5000).suffix(tr(" steps")));
                     ui.end_row();
-                    label(ui, tr("Automatic backup"), tr("Writes <name>.backup.lvglab next to a saved project."));
+                    label(ui, tr("Autosave"), tr("Saves a saved project with unsaved changes after this time."));
                     ui.horizontal(|ui| {
                         ui.add(egui::DragValue::new(&mut s.autosave_minutes).range(0..=120).suffix(" min"));
                         if s.autosave_minutes == 0 {
                             muted(ui, tr("off"));
                         }
+                    });
+                    ui.end_row();
+                    label(ui, tr("Autosave target"), tr("Automatic saves appear highlighted in the timeline."));
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut s.autosave_project, true, tr("Project file"));
+                        ui.selectable_value(&mut s.autosave_project, false, tr("Backup copy (.backup.lvglab)"));
                     });
                     ui.end_row();
                 });

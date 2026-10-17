@@ -6,8 +6,9 @@ use eframe::egui::{self, Color32, Sense, Stroke, vec2};
 
 use crate::app::Studio;
 use crate::commands::Command;
+use crate::document::EntryKind;
 use crate::i18n::{tr, trf};
-use crate::visuals::{self, ACCENT};
+use crate::visuals::{self, ACCENT, SUCCESS};
 
 const CARD_WIDTH: f32 = 150.0;
 
@@ -35,18 +36,31 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
                 let (rect, response) = ui.allocate_exact_size(vec2(CARD_WIDTH, 52.0), Sense::click());
                 let is_current = index == current;
                 let future = index > current;
+                let saved = entry.kind != EntryKind::Change;
                 let visuals = ui.style().interact(&response);
-                let fill = if is_current { visuals::ACCENT_SOFT } else { visuals.weak_bg_fill };
+                let fill = match (is_current, saved) {
+                    (true, _) => visuals::ACCENT_SOFT,
+                    (false, true) => SUCCESS.gamma_multiply(0.18),
+                    (false, false) => visuals.weak_bg_fill,
+                };
                 ui.painter().rect_filled(rect, 8, fill);
-                let stroke = if is_current {
-                    Stroke::new(1.5_f32, ACCENT)
-                } else {
-                    Stroke::new(1.0_f32, visuals.bg_stroke.color)
+                let stroke = match (is_current, saved) {
+                    (true, _) => Stroke::new(1.5_f32, ACCENT),
+                    (false, true) => Stroke::new(1.5_f32, SUCCESS),
+                    (false, false) => Stroke::new(1.0_f32, visuals.bg_stroke.color),
                 };
                 ui.painter().rect_stroke(rect, 8, stroke, egui::StrokeKind::Inside);
                 let text_color = if future { muted } else { ui.visuals().text_color() };
                 let dot = rect.left_center() + vec2(12.0, 0.0);
-                ui.painter().circle_filled(dot, 4.0, if future { muted } else { ACCENT });
+                if saved {
+                    // Save markers: a ring with a check mark.
+                    let color = if future { muted } else { SUCCESS };
+                    ui.painter().circle_stroke(dot, 5.5, Stroke::new(1.5_f32, color));
+                    let check = [dot + vec2(-2.5, 0.0), dot + vec2(-0.5, 2.0), dot + vec2(3.0, -2.0)];
+                    ui.painter().line(check.to_vec(), Stroke::new(1.5_f32, color));
+                } else {
+                    ui.painter().circle_filled(dot, 4.0, if future { muted } else { ACCENT });
+                }
                 let label = elide(&entry.label, 20);
                 ui.painter().text(
                     rect.left_top() + vec2(24.0, 10.0),

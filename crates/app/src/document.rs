@@ -47,11 +47,22 @@ impl Document {
     }
 }
 
+/// What a timeline entry stands for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EntryKind {
+    Change,
+    /// The project was saved in this state.
+    Saved,
+    /// The project was saved automatically in this state.
+    Autosaved,
+}
+
 /// One state of the project in the timeline.
 pub struct Snapshot {
     pub project: Project,
     pub label: String,
     pub time: SystemTime,
+    pub kind: EntryKind,
 }
 
 /// Linear history of project states. Jumping back and making a new change
@@ -67,7 +78,12 @@ const DEFAULT_LIMIT: usize = 300;
 impl Timeline {
     pub fn new(project: &Project, label: impl Into<String>) -> Self {
         Self {
-            entries: vec![Snapshot { project: project.clone(), label: label.into(), time: SystemTime::now() }],
+            entries: vec![Snapshot {
+                project: project.clone(),
+                label: label.into(),
+                time: SystemTime::now(),
+                kind: EntryKind::Change,
+            }],
             current: 0,
             limit: DEFAULT_LIMIT,
         }
@@ -116,7 +132,12 @@ impl Timeline {
 
     fn push(&mut self, project: &Project, label: String) {
         self.entries.truncate(self.current + 1);
-        self.entries.push(Snapshot { project: project.clone(), label, time: SystemTime::now() });
+        self.entries.push(Snapshot {
+            project: project.clone(),
+            label,
+            time: SystemTime::now(),
+            kind: EntryKind::Change,
+        });
         self.current = self.entries.len() - 1;
         self.trim();
     }
@@ -136,12 +157,52 @@ impl Timeline {
         self.current + 1 < self.entries.len()
     }
 
-    pub fn undo(&mut self) -> Option<Project> {
-        self.can_undo().then(|| self.jump(self.current - 1)).flatten()
+    /// Adds a save marker for `project` right after the current entry. The
+    /// marker repeats the current state, so later steps stay valid; a marker
+    /// that is already current is updated instead.
+    pub fn mark_save(&mut self, project: &Project, kind: EntryKind, label: impl Into<String>) {
+        self.observe(project);
+        let label = label.into();
+        let entry = &mut self.entries[self.current];
+        if entry.kind != EntryKind::Change {
+            entry.kind = kind;
+            entry.label = label;
+            entry.time = SystemTime::now();
+            return;
+        }
+        let snapshot = Snapshot { project: project.clone(), label, time: SystemTime::now(), kind };
+        self.entries.insert(self.current + 1, snapshot);
+        self.current += 1;
+        self.trim();
     }
 
+    /// Steps back to the previous different state; save markers are skipped.
+    pub fn undo(&mut self) -> Option<Project> {
+        if !self.can_undo() {
+            return None;
+        }
+        let mut target = self.current - 1;
+        while target > 0 && self.entries[target].project == self.entries[self.current].project {
+            target -= 1;
+        }
+        self.jump(target)
+    }
+
+    /// Steps forward to the next different state; save markers are skipped.
     pub fn redo(&mut self) -> Option<Project> {
-        self.can_redo().then(|| self.jump(self.current + 1)).flatten()
+        if !self.can_redo() {
+            return None;
+        }
+        let mut target = self.current + 1;
+        let last = self.entries.len() - 1;
+        while target < last && self.entries[target].project == self.entries[self.current].project {
+            target += 1;
+        }
+        // Land on the save marker of that state, so it survives new changes.
+        while target < last && self.entries[target + 1].project == self.entries[target].project {
+            target += 1;
+        }
+        self.jump(target)
     }
 }
 
@@ -261,6 +322,28 @@ mod tests {
         assert_eq!(timeline.entries().len(), 2);
         assert!(!timeline.can_redo());
         assert!(timeline.undo().is_some());
+    }
+
+    #[test]
+    fn save_markers_keep_the_history_and_are_skipped_by_undo() {
+        let mut project = Project::new("T");
+        let mut timeline = Timeline::new(&project, "Start");
+        project.name = "A".into();
+        timeline.observe(&project);
+        timeline.mark_save(&project, EntryKind::Autosaved, "Autosaved");
+        timeline.mark_save(&project, EntryKind::Saved, "Saved");
+        assert_eq!(timeline.entries().len(), 3, "a current marker is updated");
+        assert_eq!(timeline.entries()[2].kind, EntryKind::Saved);
+        assert_eq!(timeline.undo().unwrap().name, "T");
+        assert_eq!(timeline.redo().unwrap().name, "A");
+
+        // A marker in the middle of the history keeps the later steps.
+        project.name = "B".into();
+        timeline.observe(&project);
+        timeline.jump(1);
+        timeline.mark_save(&timeline.entries()[1].project.clone(), EntryKind::Autosaved, "Autosaved");
+        assert_eq!(timeline.entries().len(), 5);
+        assert_eq!(timeline.redo().unwrap().name, "B");
     }
 
     #[test]
