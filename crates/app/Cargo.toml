@@ -18,7 +18,7 @@ lvglab-ai.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence"] }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
 rfd = "0.15"
 egui_dock = { version = "0.16", features = ["serde"] }
