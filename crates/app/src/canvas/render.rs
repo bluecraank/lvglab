@@ -178,7 +178,8 @@ impl<'a> Renderer<'a> {
             painter.add(shadow.as_shape(rect, corner));
         }
         if let Some((to, vertical, main_stop, grad_stop)) = look.grad {
-            painter.add(gradient(rect, look.bg, to, vertical, main_stop, grad_stop));
+            let radius = f32::from(corner.nw);
+            painter.add(gradient(rect, radius, look.bg, to, vertical, main_stop, grad_stop));
         } else if look.bg.a() > 0 {
             painter.rect_filled(rect, corner, look.bg);
         }
@@ -1072,24 +1073,79 @@ fn arc_geometry(area: Rect, width: f32) -> (Pos2, f32) {
     (area.center(), r.max(1.0))
 }
 
-fn gradient(rect: Rect, from: Color32, to: Color32, vertical: bool, main_stop: f32, grad_stop: f32) -> Shape {
-    let mut mesh = Mesh::default();
-    let stops = [(0.0, from), (main_stop, from), (grad_stop.max(main_stop), to), (1.0, to)];
-    for (t, color) in stops {
-        let (a, b) = if vertical {
-            (pos2(rect.left(), rect.top() + rect.height() * t), pos2(rect.right(), rect.top() + rect.height() * t))
+/// A rounded rectangle filled with a linear gradient. The mesh is built
+/// in rows along the gradient axis, so color stops stay exact and the
+/// corners follow `radius`.
+fn gradient(
+    rect: Rect,
+    radius: f32,
+    from: Color32,
+    to: Color32,
+    vertical: bool,
+    main_stop: f32,
+    grad_stop: f32,
+) -> Shape {
+    let grad_stop = grad_stop.max(main_stop);
+    let color_at = |t: f32| {
+        if t <= main_stop {
+            from
+        } else if t >= grad_stop {
+            to
         } else {
-            (pos2(rect.left() + rect.width() * t, rect.top()), pos2(rect.left() + rect.width() * t, rect.bottom()))
+            let f = (t - main_stop) / (grad_stop - main_stop).max(f32::EPSILON);
+            lerp_color(from, to, f)
+        }
+    };
+    let (length, across) = if vertical { (rect.height(), rect.width()) } else { (rect.width(), rect.height()) };
+    let radius = radius.min(length / 2.0).min(across / 2.0).max(0.0);
+    // Sample positions along the axis: the stops, and dense rows in the corners.
+    let mut ts: Vec<f32> = vec![0.0, main_stop, grad_stop, 1.0];
+    if radius > 0.0 && length > 0.0 {
+        let steps = (radius / 1.5).ceil().clamp(2.0, 48.0) as usize;
+        for i in 0..=steps {
+            let d = radius * i as f32 / steps as f32 / length;
+            ts.push(d);
+            ts.push(1.0 - d);
+        }
+    }
+    ts.retain(|t| (0.0..=1.0).contains(t));
+    ts.sort_by(f32::total_cmp);
+    ts.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
+    // Inset of the rounded outline at distance `d` from the start of the axis.
+    let inset = |d: f32| {
+        let corner = if d < radius {
+            radius - d
+        } else if d > length - radius {
+            d - (length - radius)
+        } else {
+            return 0.0;
+        };
+        radius - (radius * radius - corner * corner).max(0.0).sqrt()
+    };
+    let mut mesh = Mesh::default();
+    for t in &ts {
+        let d = t * length;
+        let i = inset(d);
+        let color = color_at(*t);
+        let (a, b) = if vertical {
+            (pos2(rect.left() + i, rect.top() + d), pos2(rect.right() - i, rect.top() + d))
+        } else {
+            (pos2(rect.left() + d, rect.top() + i), pos2(rect.left() + d, rect.bottom() - i))
         };
         mesh.vertices.push(Vertex { pos: a, uv: Pos2::ZERO, color });
         mesh.vertices.push(Vertex { pos: b, uv: Pos2::ZERO, color });
     }
-    for i in 0..3u32 {
-        let base = i * 2;
+    for row in 0..ts.len().saturating_sub(1) as u32 {
+        let base = row * 2;
         mesh.add_triangle(base, base + 1, base + 2);
         mesh.add_triangle(base + 1, base + 2, base + 3);
     }
     Shape::mesh(mesh)
+}
+
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let mix = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
+    Color32::from_rgba_premultiplied(mix(a.r(), b.r()), mix(a.g(), b.g()), mix(a.b(), b.b()), mix(a.a(), b.a()))
 }
 
 fn blend(base: Color32, over: Color32) -> Color32 {
