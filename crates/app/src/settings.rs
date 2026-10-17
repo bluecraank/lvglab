@@ -83,6 +83,11 @@ pub struct AppSettings {
     pub autosave_minutes: u32,
     // Export
     pub open_export_folder: bool,
+    // AI assistant
+    /// Anthropic API key; empty uses the `ANTHROPIC_API_KEY` environment variable.
+    pub ai_api_key: String,
+    pub ai_model: String,
+    pub ai_effort: String,
     pub recent: Vec<PathBuf>,
 }
 
@@ -104,6 +109,9 @@ impl Default for AppSettings {
             history_limit: 300,
             autosave_minutes: 5,
             open_export_folder: false,
+            ai_api_key: String::new(),
+            ai_model: lvglab_ai::MODELS[0].0.to_owned(),
+            ai_effort: "medium".to_owned(),
             recent: Vec::new(),
         }
     }
@@ -116,10 +124,20 @@ impl AppSettings {
         self.recent.truncate(MAX_RECENT);
     }
 
-    /// Restores the defaults but keeps the list of recent files.
+    /// Restores the defaults but keeps the recent files and the API key.
     pub fn reset(&mut self) {
         let recent = std::mem::take(&mut self.recent);
-        *self = Self { recent, ..Self::default() };
+        let ai_api_key = std::mem::take(&mut self.ai_api_key);
+        *self = Self { recent, ai_api_key, ..Self::default() };
+    }
+
+    /// The API key to use: the configured one or the environment variable.
+    pub fn api_key(&self) -> String {
+        if self.ai_api_key.trim().is_empty() {
+            std::env::var("ANTHROPIC_API_KEY").unwrap_or_default()
+        } else {
+            self.ai_api_key.trim().to_owned()
+        }
     }
 
     /// Clamps values that may come from an older or edited settings file.
@@ -129,6 +147,12 @@ impl AppSettings {
         self.nudge_large = self.nudge_large.clamp(2, 200);
         self.history_limit = self.history_limit.clamp(20, 5000);
         self.autosave_minutes = self.autosave_minutes.min(120);
+        if !lvglab_ai::MODELS.iter().any(|(id, _)| *id == self.ai_model) {
+            self.ai_model = lvglab_ai::MODELS[0].0.to_owned();
+        }
+        if !lvglab_ai::EFFORTS.contains(&self.ai_effort.as_str()) {
+            self.ai_effort = "medium".to_owned();
+        }
     }
 }
 

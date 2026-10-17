@@ -15,3 +15,6 @@ ureq = { version = "2", features = ["json"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+lvglab-codegen.workspace = true

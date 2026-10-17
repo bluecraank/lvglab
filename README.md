@@ -19,6 +19,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - [Compatibility](#compatibility)
 - [Getting started](#getting-started)
 - [Working with the editor](#working-with-the-editor)
+- [AI assistant](#ai-assistant)
 - [Importing SquareLine Studio projects](#importing-squareline-studio-projects)
 - [Exporting the UI library](#exporting-the-ui-library)
 - [Using the library on an ESP32 with TFT_eSPI](#using-the-library-on-an-esp32-with-tft_espi)
@@ -61,6 +62,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - Layers with drag & drop reordering and reparenting, visibility toggle, filtering and context menu.
 - Image assets (PNG/JPEG/BMP) and font assets (TTF/OTF) appear in the preview and are converted when
   you export.
+- **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.
 - Multi language UI (English, German), light and dark appearance.
 - Project settings: LVGL version, resolution (with presets), round or rectangular display, theme.
 
@@ -158,6 +160,28 @@ Keyboard shortcuts:
 | Del | Delete selection |
 | Arrow keys (+ Shift) | Move selection by 1 px (Shift: configurable, default 10 px) |
 | Space + drag, middle mouse | Pan the canvas |
+
+## AI assistant
+
+The **AI assistant** panel builds interfaces from a description, e.g. *"Settings screen with three
+switches and a back button"* or *"make all buttons rounder"*. It uses Claude by Anthropic.
+
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+2. Enter it under **Edit → Preferences → AI assistant**, or set the environment variable `ANTHROPIC_API_KEY`.
+3. Choose **Change current screen** or **New screen**, describe what you want and press **Send** (Ctrl+Enter).
+
+How it works:
+
+- The request contains the display size and shape, the theme, the project's fonts and images, the
+  screen names and, when changing a screen, that screen's current content. A reference of all widgets,
+  properties and style properties is sent as a cached system prompt.
+- The model answers with a JSON document in a fixed schema (structured output). LVGLab validates every
+  widget, property, style, parent and event against the widget catalog. Problems are listed as notes,
+  never applied blindly.
+- Every answer becomes one step in the timeline (`AI: …`), so Ctrl+Z undoes it.
+- Model (default Claude Opus 5.5, also Sonnet 5.5 and Haiku 5.5) and effort can be changed in the preferences.
+  For safety declines, the server-side fallback is enabled.
+- Requests are billed to your Anthropic account. The key is stored in the editor settings on your computer.
 
 ## Importing SquareLine Studio projects
 
@@ -338,6 +362,7 @@ crates/
 ├── model     lvglab-model    document model: widgets, catalog, styles, events, theme, layout
 ├── spj       lvglab-spj      SquareLine Studio importer
 ├── codegen   lvglab-codegen  C code, image and font conversion, library export
+├── ai        lvglab-ai     AI assistant: prompt, Claude API client, design schema and validation
 └── app       lvglab  egui desktop application
 ```
 

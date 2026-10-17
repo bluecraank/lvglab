@@ -1674,6 +1674,7 @@ dependencies = [
 name = "lvglab-ai"
 version = "0.1.0"
 dependencies = [
+ "lvglab-codegen",
  "lvglab-model",
  "serde",
  "serde_json",

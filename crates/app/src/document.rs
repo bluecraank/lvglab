@@ -103,11 +103,22 @@ impl Timeline {
             return false;
         }
         let label = describe_change(base, project);
+        self.push(project, label);
+        true
+    }
+
+    /// Records `project` with an explicit label (e.g. an AI change).
+    pub fn record(&mut self, project: &Project, label: impl Into<String>) {
+        if self.entries[self.current].project != *project {
+            self.push(project, label.into());
+        }
+    }
+
+    fn push(&mut self, project: &Project, label: String) {
         self.entries.truncate(self.current + 1);
         self.entries.push(Snapshot { project: project.clone(), label, time: SystemTime::now() });
         self.current = self.entries.len() - 1;
         self.trim();
-        true
     }
 
     /// Moves to entry `index` and returns its project.

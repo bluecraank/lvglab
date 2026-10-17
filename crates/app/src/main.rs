@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod assistant;
 mod canvas;
 mod commands;
 mod dialogs;
@@ -17,7 +18,7 @@ mod widgets;
 use std::path::PathBuf;
 
 /// Command line:
-/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--screenshot out.png]`.
+/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--panel <name>] [--screenshot out.png]`.
 #[derive(Default)]
 pub struct LaunchOptions {
     pub file: Option<PathBuf>,
@@ -26,6 +27,8 @@ pub struct LaunchOptions {
     /// Opens a dialog at start (`preferences`, `about`, `discard`, `close`);
     /// used for documentation screenshots.
     pub dialog: Option<String>,
+    /// Brings a panel to the front (`assistant`, `style`, ...).
+    pub panel: Option<String>,
     /// Renders one frame into a PNG and exits (documentation, CI).
     pub screenshot: Option<PathBuf>,
 }
@@ -37,6 +40,8 @@ impl LaunchOptions {
         while let Some(arg) = args.next() {
             if arg == "--screenshot" {
                 options.screenshot = args.next().map(PathBuf::from);
+            } else if arg == "--panel" {
+                options.panel = args.next().map(|s| s.to_string_lossy().into_owned());
             } else if arg == "--dialog" {
                 options.dialog = args.next().map(|s| s.to_string_lossy().into_owned());
             } else if arg == "--select" {
