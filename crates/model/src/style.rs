@@ -442,9 +442,18 @@ pub enum StyleValue {
     Font(String),
     /// Image asset name.
     Image(String),
+    /// A color theme variable; used for color and opacity properties.
+    Theme(String),
 }
 
 impl StyleValue {
+    pub fn as_theme(&self) -> Option<&str> {
+        match self {
+            Self::Theme(variable) => Some(variable),
+            _ => None,
+        }
+    }
+
     pub fn as_int(&self) -> Option<i32> {
         match self {
             Self::Int(v) => Some(*v),

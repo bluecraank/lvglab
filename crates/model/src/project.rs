@@ -1,11 +1,12 @@
 //! The project document and all structural edit operations on it.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::color::Palette;
+use crate::color_theme::ColorThemes;
 use crate::prop::PropValue;
 use crate::style::StyleValue;
 use crate::widget::{Widget, WidgetId, WidgetKind};
@@ -111,11 +112,34 @@ pub struct ExportSettings {
     /// Folder the library is written into, relative to the project file
     /// (e.g. the `lib` folder of a PlatformIO project).
     pub directory: String,
+    /// Prefix of every generated C symbol and file (`ui` → `ui_Main01`,
+    /// `ui_img_logo_png`, `ui_theme_set`). Use different prefixes for UI
+    /// libraries that are linked into the same firmware.
+    pub prefix: String,
+    /// Wrap translatable texts in `_()` for the lv_i18n library and
+    /// generate `<prefix>_relocalize()`.
+    pub multilang: bool,
+    /// Store image pixels byte swapped (`LV_COLOR_16_SWAP 1`).
+    pub swap_bytes: bool,
 }
 
 impl Default for ExportSettings {
     fn default() -> Self {
-        Self { library_name: "ui".to_owned(), directory: "export".to_owned() }
+        Self {
+            library_name: "ui".to_owned(),
+            directory: "export".to_owned(),
+            prefix: "ui".to_owned(),
+            multilang: false,
+            swap_bytes: false,
+        }
+    }
+}
+
+impl ExportSettings {
+    /// The prefix as a valid C identifier (falls back to `ui`).
+    pub fn symbol_prefix(&self) -> String {
+        let prefix: String = self.prefix.trim().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if prefix.is_empty() || prefix.starts_with(|c: char| c.is_ascii_digit()) { "ui".to_owned() } else { prefix }
     }
 }
 
@@ -170,6 +194,8 @@ pub struct Project {
     pub theme: ThemeSettings,
     pub export: ExportSettings,
     pub assets: Assets,
+    /// Color themes with variables that styles can bind to.
+    pub color_themes: ColorThemes,
     pub screens: Vec<Widget>,
     /// Next free widget id.
     pub next_id: u64,
@@ -184,6 +210,7 @@ impl Default for Project {
             display: DisplaySettings::default(),
             theme: ThemeSettings::default(),
             export: ExportSettings::default(),
+            color_themes: ColorThemes::default(),
             assets: Assets::default(),
             screens: Vec::new(),
             next_id: 1,
@@ -479,6 +506,30 @@ impl Project {
         }
     }
 
+    /// Renames a color theme variable and every style bound to it. Returns
+    /// false if `new` is empty or already used.
+    pub fn rename_theme_variable(&mut self, old: &str, new: &str) -> bool {
+        let new = new.trim();
+        let themes = &mut self.color_themes;
+        let Some(index) = themes.index_of(old) else { return false };
+        if new.is_empty() || themes.index_of(new).is_some() {
+            return false;
+        }
+        themes.variables[index] = new.to_owned();
+        for screen in &mut self.screens {
+            screen.walk_mut(&mut |w| {
+                for block in w.styles.blocks_mut() {
+                    for value in block.props.values_mut() {
+                        if value.as_theme() == Some(old) {
+                            *value = StyleValue::Theme(new.to_owned());
+                        }
+                    }
+                }
+            });
+        }
+        true
+    }
+
     /// Makes a path absolute relative to the project directory.
     pub fn resolve_path(project_dir: Option<&Path>, path: &str) -> PathBuf {
         let path = PathBuf::from(path);
@@ -487,12 +538,126 @@ impl Project {
             _ => path,
         }
     }
+
+    /// Copies every image and font file the project uses into
+    /// `<project_dir>/assets` and makes the paths relative, so the project
+    /// folder is self-contained. `old_dir` resolves the current relative
+    /// paths. Returns the asset files that do not exist.
+    pub fn collect_assets(&mut self, old_dir: Option<&Path>, project_dir: &Path) -> Result<Vec<String>, ProjectError> {
+        let assets_dir = project_dir.join(ASSETS_DIR);
+        let mut copied: HashMap<PathBuf, String> = HashMap::new();
+        let mut used: HashSet<String> = HashSet::new();
+        let mut missing = Vec::new();
+        let paths =
+            self.assets.images.iter_mut().map(|i| &mut i.path).chain(self.assets.fonts.iter_mut().map(|f| &mut f.path));
+        for path in paths {
+            if path.trim().is_empty() {
+                continue;
+            }
+            let source = Self::resolve_path(old_dir, path);
+            if let Some(relative) = copied.get(&source) {
+                *path = relative.clone();
+                continue;
+            }
+            if !source.is_file() {
+                missing.push(source.display().to_string());
+                // Keep the reference valid from the new location.
+                *path = source.display().to_string();
+                continue;
+            }
+            let relative = match source.strip_prefix(project_dir) {
+                Ok(inside) => inside.to_string_lossy().replace('\\', "/"),
+                Err(_) => {
+                    let target = unique_target(&assets_dir, &source, &mut used);
+                    std::fs::create_dir_all(&assets_dir)
+                        .map_err(|e| ProjectError::Io { path: assets_dir.clone(), source: e })?;
+                    if !target.exists() || !same_contents(&source, &target) {
+                        std::fs::copy(&source, &target)
+                            .map_err(|e| ProjectError::Io { path: target.clone(), source: e })?;
+                    }
+                    let file = target.file_name().unwrap_or_default().to_string_lossy();
+                    format!("{ASSETS_DIR}/{file}")
+                }
+            };
+            used.insert(relative.to_ascii_lowercase());
+            copied.insert(source, relative.clone());
+            *path = relative;
+        }
+        Ok(missing)
+    }
+}
+
+/// Folder next to the project file that holds its images and fonts.
+pub const ASSETS_DIR: &str = "assets";
+
+/// `assets/<file>`; a different file with the same name gets a suffix.
+fn unique_target(assets_dir: &Path, source: &Path, used: &mut HashSet<String>) -> PathBuf {
+    let stem = source.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let extension = source.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let mut n = 1;
+    loop {
+        let file = if n == 1 { format!("{stem}{extension}") } else { format!("{stem}_{n}{extension}") };
+        let target = assets_dir.join(&file);
+        let key = format!("{ASSETS_DIR}/{file}").to_ascii_lowercase();
+        let free = !used.contains(&key) && (!target.exists() || same_contents(source, &target));
+        if free {
+            used.insert(key);
+            return target;
+        }
+        n += 1;
+    }
+}
+
+fn same_contents(a: &Path, b: &Path) -> bool {
+    match (std::fs::read(a), std::fs::read(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::event::{Action, EventHandler, EventTrigger, ScreenAnim};
+
+    #[test]
+    fn collects_assets_into_the_project_folder() {
+        let root = std::env::temp_dir().join(format!("lvglab-collect-{}", std::process::id()));
+        let source = root.join("source");
+        std::fs::create_dir_all(source.join("icons")).unwrap();
+        std::fs::write(source.join("logo.png"), b"a").unwrap();
+        std::fs::write(source.join("icons/logo.png"), b"b").unwrap();
+        std::fs::write(source.join("font.ttf"), b"ttf").unwrap();
+        let mut project = Project::new("P");
+        let image = |name: &str, path: &Path| ImageAsset { name: name.into(), path: path.display().to_string() };
+        project.assets.images.push(image("logo", &source.join("logo.png")));
+        project.assets.images.push(image("icon", &source.join("icons/logo.png")));
+        project.assets.images.push(image("gone", &source.join("gone.png")));
+        for size in [20, 40] {
+            project.assets.fonts.push(FontAsset {
+                name: format!("F{size}"),
+                path: source.join("font.ttf").display().to_string(),
+                size,
+                ..FontAsset::default()
+            });
+        }
+        let dir = root.join("project");
+        let missing = project.collect_assets(None, &dir).unwrap();
+        assert_eq!(missing.len(), 1);
+        let paths: Vec<&str> = project.assets.images.iter().map(|i| i.path.as_str()).collect();
+        assert_eq!(&paths[..2], ["assets/logo.png", "assets/logo_2.png"]);
+        assert_eq!(project.assets.fonts[0].path, "assets/font.ttf");
+        assert_eq!(project.assets.fonts[1].path, "assets/font.ttf");
+        assert_eq!(std::fs::read(dir.join("assets/logo_2.png")).unwrap(), b"b");
+
+        // Saving again in place keeps everything; saving elsewhere copies again.
+        project.collect_assets(Some(&dir), &dir).unwrap();
+        assert_eq!(project.assets.images[1].path, "assets/logo_2.png");
+        let other = root.join("other");
+        project.collect_assets(Some(&dir), &other).unwrap();
+        assert_eq!(std::fs::read(other.join("assets/logo_2.png")).unwrap(), b"b");
+        std::fs::remove_dir_all(root).ok();
+    }
 
     fn sample() -> (Project, WidgetId, WidgetId) {
         let mut project = Project::new("Test");

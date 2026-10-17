@@ -9,6 +9,7 @@ use crate::settings::Appearance;
 pub const ACCENT: Color32 = Color32::from_rgb(0x6C, 0x63, 0xFF);
 pub const ACCENT_SOFT: Color32 = Color32::from_rgba_premultiplied(0x36, 0x32, 0x80, 0x80);
 pub const WARNING: Color32 = Color32::from_rgb(0xF5, 0xA5, 0x24);
+pub const SUCCESS: Color32 = Color32::from_rgb(0x2E, 0xB8, 0x72);
 pub const DANGER: Color32 = Color32::from_rgb(0xEF, 0x53, 0x50);
 
 /// Colors that depend on the theme but are not part of egui's visuals.

@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use lvglab_model::catalog::{self, StyleSlot, WidgetDef};
+use lvglab_model::color_theme::{ColorTheme, ThemeColor};
 use lvglab_model::coord::{Align, Coord, Unit};
 use lvglab_model::flags::{Dir, FlexAlign, FlexFlow, ObjFlag, ObjState, ScrollbarMode, SnapMode, StateMask};
 use lvglab_model::project::{DisplayShape, FontAsset, ImageAsset, LvglVersion};
@@ -20,12 +21,14 @@ use lvglab_model::style::{Part, StyleKind, StyleProp, StyleValue, builtin_font_s
 use lvglab_model::widget::FlexLayout;
 use lvglab_model::{Color, Palette, Project, Widget, WidgetId, WidgetKind};
 
-use format::{SpjFile, SpjNode, SpjProp};
+use format::{SpjFile, SpjNode, SpjProp, ThemesFile};
 
 /// `InheritedType` of property group headers.
 const GROUP_HEADER: i64 = 1;
 /// `InheritedType` of style properties.
 const STYLE: i64 = 11;
+/// Property flag of texts that are translated with lv_i18n.
+const TRANSLATABLE: i64 = 4_194_304;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImportError {
@@ -69,6 +72,8 @@ struct Importer<'a> {
     project: Project,
     guids: HashMap<String, WidgetId>,
     pending: Vec<PendingRef>,
+    /// Theme variable names by SquareLine node id.
+    theme_nids: HashMap<i64, String>,
     warnings: BTreeMap<String, usize>,
 }
 
@@ -79,6 +84,7 @@ impl<'a> Importer<'a> {
             project: Project::default(),
             guids: HashMap::new(),
             pending: Vec::new(),
+            theme_nids: HashMap::new(),
             warnings: BTreeMap::new(),
         }
     }
@@ -96,6 +102,7 @@ impl<'a> Importer<'a> {
 
     fn run(&mut self, file: SpjFile, fallback_name: &str) -> Project {
         self.apply_info(&file, fallback_name);
+        self.import_themes();
         self.import_assets();
         let screens: Vec<&SpjNode> = if file.root.kind.eq_ignore_ascii_case("SCREEN") {
             vec![&file.root]
@@ -160,11 +167,70 @@ impl<'a> Importer<'a> {
                 None => self.warn(format!("LVGL {version} is not supported; the project targets LVGL 8.3")),
             }
         }
+        let export = &mut self.project.export;
+        if let Some(prefix) = info.custom_variable_prefix.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+            export.prefix = prefix.to_owned();
+        }
+        export.multilang = info.multilang.as_deref().is_some_and(|m| m.eq_ignore_ascii_case("ENABLE"));
+        // The library is named after the project folder, e.g. `ui_round`.
+        if let Some(folder) = self.base_dir.and_then(Path::file_name).and_then(|f| f.to_str()) {
+            let name: String =
+                folder.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+            if !name.trim_matches('_').is_empty() {
+                export.library_name = name;
+            }
+        }
+        // SquareLine's TFT_eSPI board exports for LV_COLOR_16_SWAP 1.
+        export.swap_bytes = true;
         if let Some(board) = &info.board {
             if !board.contains("TFT_eSPI") {
                 self.warn(format!("board `{board}` was replaced by ESP32 + TFT_eSPI"));
             }
         }
+    }
+
+    /// Reads the color themes from `Themes.slt` next to the project file.
+    fn import_themes(&mut self) {
+        let Some(path) = self.base_dir.map(|d| d.join("Themes.slt")) else { return };
+        let Ok(text) = std::fs::read_to_string(&path) else { return };
+        let file: ThemesFile = match serde_json::from_str(&text) {
+            Ok(file) => file,
+            Err(err) => {
+                self.warn(format!("Themes.slt could not be read: {err}"));
+                return;
+            }
+        };
+        let themes = &mut self.project.color_themes;
+        let color = |values: &[i64]| {
+            let c = |i: usize, d: i64| values.get(i).copied().unwrap_or(d).clamp(0, 255) as u8;
+            ThemeColor { color: Color::rgb(c(0, 255), c(1, 255), c(2, 255)), opa: c(3, 255) }
+        };
+        for variable in &file.deftheme.properties {
+            themes.variables.push(variable.strval.clone());
+            self.theme_nids.insert(variable.nid, variable.strval.clone());
+        }
+        for theme in std::iter::once(&file.deftheme).chain(&file.themes) {
+            let values = file
+                .deftheme
+                .properties
+                .iter()
+                .map(|variable| {
+                    let own = theme.properties.iter().find(|p| p.nid == variable.nid || p.strval == variable.strval);
+                    color(&own.unwrap_or(variable).intarray)
+                })
+                .collect();
+            themes.themes.push(ColorTheme { name: theme.name.clone(), values });
+        }
+        if let Some(selected) = &file.selected_theme {
+            themes.active = themes.themes.iter().position(|t| &t.name == selected).unwrap_or(0);
+        }
+        themes.normalize();
+    }
+
+    /// The theme variable a color style refers to, if any.
+    fn theme_reference(&self, entry: &SpjProp) -> Option<String> {
+        let nid = entry.integer.filter(|n| *n != 0)?;
+        self.theme_nids.get(&nid).cloned()
     }
 
     fn convert(&mut self, node: &SpjNode, kind: WidgetKind) -> Widget {
@@ -329,6 +395,9 @@ impl<'a> Importer<'a> {
             }
         };
         widget.set_prop(target.key, value);
+        if prop.flags.unwrap_or(0) & TRANSLATABLE != 0 && def.prop("translate").is_some() {
+            widget.set_prop("translate", PropValue::Bool(true));
+        }
     }
 
     fn apply_style(&mut self, widget: &mut Widget, def: &'static WidgetDef, name: &str, prop: &SpjProp) {
@@ -357,6 +426,15 @@ impl<'a> Importer<'a> {
                     self.warn(format!("style property `{style_name}` is not supported"));
                     continue;
                 };
+                if matches!(style.kind(), StyleKind::Color) {
+                    if let Some(variable) = self.theme_reference(entry) {
+                        widget.styles.set(slot.key, state, style, StyleValue::Theme(variable.clone()));
+                        if let Some(opa) = style.opa_companion() {
+                            widget.styles.set(slot.key, state, opa, StyleValue::Theme(variable));
+                        }
+                        continue;
+                    }
+                }
                 if let Some(value) = self.style_value(style, entry) {
                     widget.styles.set(slot.key, state, style, value);
                 }
@@ -809,6 +887,53 @@ mod tests {
         assert!(Path::new(&font.path).ends_with("assets/calibri.ttf"), "{}", font.path);
         assert!(imported.project.assets.image("logo").is_some());
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn imports_color_themes_translations_and_export_settings() {
+        let dir = std::env::temp_dir().join(format!("lvglab-spj-themes-{}", std::process::id())).join("ui_round");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Themes.slt"),
+            r#"{"deftheme": {"name": "Default", "properties": [
+                  {"nid": 77, "strtype": "THEME_COLOR", "strval": "Main", "intarray": [255, 255, 255, 255]}]},
+                "themes": [{"name": "BmwOrange", "properties": [
+                  {"nid": 77, "strtype": "THEME_COLOR", "strval": "Main", "intarray": [241, 92, 0, 200]}]}],
+                "selected_theme": "BmwOrange"}"#,
+        )
+        .unwrap();
+        let json = r#"{ "root": { "guid": "s", "saved_objtypeKey": "SCREEN", "properties": [], "children": [
+            { "guid": "l", "saved_objtypeKey": "LABEL", "properties": [
+              { "strtype": "OBJECT/Name", "strval": "Title" },
+              { "strtype": "LABEL/Text", "strval": "Overview", "flags": 4194304 },
+              { "strtype": "LABEL/Style_main", "part": "lv.PART.MAIN", "InheritedType": 11, "childs": [
+                { "strtype": "_style/StyleState", "strval": "DEFAULT", "childs": [
+                  { "strtype": "_style/Text_Color", "strval": "Main", "integer": 77, "intarray": [255, 255, 255, 255] }
+                ]}
+              ]}
+            ]}
+          ]},
+          "info": { "custom_variable_prefix": "sett", "multilang": "ENABLE", "board": "Arduino with TFT_eSPI" } }"#;
+        let project = import_str(json, Some(&dir), "x").unwrap().project;
+        let themes = &project.color_themes;
+        assert_eq!(themes.variables, vec!["Main"]);
+        assert_eq!(themes.themes.len(), 2);
+        assert_eq!(themes.active, 1);
+        assert_eq!(themes.value("Main").unwrap().opa, 200);
+        let label = &project.screens[0].children[0];
+        assert!(label.prop_bool("translate"));
+        assert_eq!(
+            label.styles.get("main", StateMask::DEFAULT, StyleProp::TextColor),
+            Some(&StyleValue::Theme("Main".into()))
+        );
+        assert_eq!(
+            label.styles.get("main", StateMask::DEFAULT, StyleProp::TextOpa),
+            Some(&StyleValue::Theme("Main".into()))
+        );
+        let export = &project.export;
+        assert_eq!((export.prefix.as_str(), export.library_name.as_str()), ("sett", "ui_round"));
+        assert!(export.multilang && export.swap_bytes);
+        std::fs::remove_dir_all(dir.parent().unwrap()).ok();
     }
 
     #[test]

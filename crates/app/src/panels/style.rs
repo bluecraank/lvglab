@@ -166,6 +166,62 @@ fn add_property(ui: &mut egui::Ui, widget: &mut Widget, slot: &str, state: State
 }
 
 fn value_editor(ui: &mut egui::Ui, project: &Project, prop: StyleProp, value: &mut StyleValue) -> bool {
+    let themeable = matches!(prop.kind(), StyleKind::Color | StyleKind::Opa);
+    if themeable && (!project.color_themes.variables.is_empty() || value.as_theme().is_some()) {
+        return ui
+            .horizontal(|ui| {
+                let mut changed = theme_choice(ui, project, prop, value);
+                if value.as_theme().is_none() {
+                    changed |= plain_value_editor(ui, project, prop, value);
+                }
+                changed
+            })
+            .inner;
+    }
+    plain_value_editor(ui, project, prop, value)
+}
+
+/// Chooses between a fixed value and a color theme variable.
+fn theme_choice(ui: &mut egui::Ui, project: &Project, prop: StyleProp, value: &mut StyleValue) -> bool {
+    let themes = &project.color_themes;
+    let current = value.as_theme().map(str::to_owned);
+    let mut changed = false;
+    let selected = current.clone().unwrap_or_else(|| tr("Fixed").to_owned());
+    egui::ComboBox::from_id_salt(("style_theme", prop.name()))
+        .selected_text(selected)
+        .width(96.0)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(current.is_none(), tr("Fixed value")).clicked() && current.is_some() {
+                // Keep what the active theme shows.
+                *value = match (prop.kind(), current.as_deref().and_then(|v| themes.value(v))) {
+                    (StyleKind::Color, Some(c)) => StyleValue::Color(c.color),
+                    (StyleKind::Opa, Some(c)) => StyleValue::Int(i32::from(c.opa)),
+                    _ => prop.initial_value(),
+                };
+                changed = true;
+            }
+            for variable in &themes.variables {
+                let on = current.as_deref() == Some(variable.as_str());
+                ui.horizontal(|ui| {
+                    if let Some(c) = themes.value(variable) {
+                        widgets::swatch(ui, egui::Color32::from_rgb(c.color.r, c.color.g, c.color.b));
+                    }
+                    if ui.selectable_label(on, variable).clicked() && !on {
+                        *value = StyleValue::Theme(variable.clone());
+                        changed = true;
+                    }
+                });
+            }
+        })
+        .response
+        .on_hover_text(tr("Bind to a theme color: the value follows the active theme (ui_theme_set)."));
+    if current.as_deref().is_some_and(|v| themes.index_of(v).is_none()) {
+        ui.colored_label(crate::visuals::WARNING, tr("missing"));
+    }
+    changed
+}
+
+fn plain_value_editor(ui: &mut egui::Ui, project: &Project, prop: StyleProp, value: &mut StyleValue) -> bool {
     let id = ("style_value", prop.name());
     match (prop.kind(), value) {
         (StyleKind::Coord, StyleValue::Coord(c)) => {

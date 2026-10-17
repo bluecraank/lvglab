@@ -54,9 +54,19 @@ pub struct Studio {
     /// Set by the preferences to restore the default panel layout.
     pub reset_layout: bool,
     pub assistant: crate::assistant::Assistant,
+    /// Running simulation of the project on the canvas.
+    pub simulation: Option<crate::simulator::Simulation>,
 }
 
 impl Studio {
+    /// Starts the simulation on the current screen or stops it.
+    pub fn toggle_simulation(&mut self) {
+        self.simulation = match self.simulation {
+            Some(_) => None,
+            None => Some(crate::simulator::Simulation::new(&self.doc.project, self.screen)),
+        };
+    }
+
     fn new(settings: AppSettings) -> Self {
         let project = Project::new("MyProject");
         let screen = project.screens[0].id;
@@ -82,6 +92,7 @@ impl Studio {
             palette_filter: String::new(),
             reset_layout: false,
             assistant: crate::assistant::Assistant::default(),
+            simulation: None,
         }
     }
 
@@ -164,6 +175,12 @@ impl StudioApp {
             let id = studio.doc.project.all_widgets().iter().find(|w| w.name == name).map(|w| w.id);
             studio.select(id);
             studio.report = None;
+        }
+        if options.simulate {
+            studio.toggle_simulation();
+            if let Some(sim) = &mut studio.simulation {
+                sim.record = true;
+            }
         }
         let dialog = options.dialog.as_deref();
         studio.show_preferences = dialog == Some("preferences");
@@ -428,6 +445,15 @@ impl StudioApp {
         }
         if shortcut(ctrl, Key::E) {
             s.push(Command::ExportLibrary);
+        }
+        if shortcut(Modifiers::NONE, Key::F5) {
+            s.toggle_simulation();
+        }
+        if s.simulation.is_some() {
+            if shortcut(Modifiers::NONE, Key::Escape) {
+                s.simulation = None;
+            }
+            return;
         }
         if typing {
             return;

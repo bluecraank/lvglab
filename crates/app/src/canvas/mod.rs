@@ -182,9 +182,12 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
         draw_grid(&painter, display, zoom, studio.settings.grid_size.max(2) as f32, palette.canvas_grid);
     }
 
-    // Lay out and paint the current screen.
-    let project = &studio.doc.project;
-    let Some(screen) = project.widget(studio.screen) else {
+    // Lay out and paint the current screen (of the simulation, if one runs).
+    let (project, screen_id) = match &studio.simulation {
+        Some(sim) => (&sim.project, sim.screen),
+        None => (&studio.doc.project, studio.screen),
+    };
+    let Some(screen) = project.widget(screen_id) else {
         painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -195,10 +198,13 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
         return;
     };
     let theme = Theme::new(&project.theme, &project.display);
-    let resolver = StyleResolver::new(&theme);
+    let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
     let measure = EguiMeasure { ctx: ui.ctx(), assets: &studio.assets, project, images: studio.assets.image_sizes() };
     let layout = Layout::compute(screen, width, height, &resolver, &measure, studio.selected);
-    let preview_state = studio.selected.filter(|_| studio.style_state.0 != 0).map(|id| (id, studio.style_state));
+    let preview_state = match &studio.simulation {
+        Some(sim) => sim.preview_state(),
+        None => studio.selected.filter(|_| studio.style_state.0 != 0).map(|id| (id, studio.style_state)),
+    };
     let renderer = Renderer {
         painter: painter.clone(),
         origin,
@@ -221,6 +227,11 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let screen_rect = |r: lay::Rect| {
         Rect::from_min_size(origin + vec2(r.x as f32, r.y as f32) * zoom, vec2(r.w as f32, r.h as f32) * zoom)
     };
+
+    if studio.simulation.is_some() {
+        simulate(ui, studio, &response, &painter, rect, display, &to_display);
+        return;
+    }
 
     draw_outlines(&painter, &studio.canvas.nodes, &screen_rect, &studio.settings);
 
@@ -273,6 +284,56 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
 
     interact(ui, studio, &response, handles, to_display, zoom);
     drop_from_palette(ui, studio, &response, &to_display, &screen_rect, &painter);
+}
+
+/// Plays the UI: mouse input goes to the simulation instead of the editor.
+fn simulate(
+    ui: &egui::Ui,
+    studio: &mut Studio,
+    response: &egui::Response,
+    painter: &egui::Painter,
+    rect: Rect,
+    display: Rect,
+    to_display: &impl Fn(Pos2) -> (i32, i32),
+) {
+    let Some(sim) = &mut studio.simulation else { return };
+    let nodes = &studio.canvas.nodes;
+    let now = ui.input(|i| i.time);
+    let (pointer, pressed, down, released) = ui.input(|i| {
+        (i.pointer.latest_pos(), i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.primary_released())
+    });
+    let inside = pointer.filter(|p| response.hovered() && display.contains(*p));
+    if let Some(p) = inside {
+        let (x, y) = to_display(p);
+        if pressed {
+            sim.press(nodes, x, y, now);
+        } else if down {
+            sim.drag(x, y, now);
+        }
+        if sim.record {
+            ui.ctx().set_cursor_icon(CursorIcon::None);
+        } else if sim.is_clickable_at(nodes, x, y) || sim.pressed().is_some() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+    }
+    if released {
+        if let Some(p) = pointer.filter(|p| rect.contains(*p)) {
+            let (x, y) = to_display(p);
+            sim.release(x, y, p, now);
+        }
+    } else if !down && sim.pressed().is_some() {
+        // The button was released outside the window.
+        sim.cancel(now);
+    }
+    sim.tick(now);
+    if sim.record {
+        sim.draw_overlay(painter, inside, down, now);
+    }
+    // Mark the canvas as running.
+    painter.rect_stroke(rect.shrink(1.0), 0, Stroke::new(2.0_f32, visuals::SUCCESS), StrokeKind::Inside);
+    if sim.is_animating(now) || sim.record {
+        ui.ctx().request_repaint();
+    }
 }
 
 fn interact(
@@ -565,6 +626,34 @@ fn ring(center: Pos2, inner: f32, outer: f32, color: Color32) -> egui::Shape {
     egui::Shape::mesh(mesh)
 }
 
+fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
+    let running = studio.simulation.is_some();
+    let (text, color) = if running { ("■", visuals::DANGER) } else { ("▶", visuals::SUCCESS) };
+    let label = if running { tr("Stop") } else { tr("Simulate") };
+    let hint = if running {
+        tr("Stop the simulation (F5 or Esc)")
+    } else {
+        tr("Run the UI: click buttons, switches and sliders, events are executed (F5)")
+    };
+    let button = egui::Button::new(egui::RichText::new(format!("{text} {label}")).color(color));
+    if ui.add(button).on_hover_text(hint).clicked() {
+        studio.toggle_simulation();
+    }
+    let Some(sim) = &mut studio.simulation else { return };
+    ui.toggle_value(&mut sim.record, format!("⏺ {}", tr("Record")))
+        .on_hover_text(tr("Shows the pointer and every click, for screen recordings"));
+    if ui.button("↺").on_hover_text(tr("Restart the simulation with the current project")).clicked() {
+        let screen = sim.screen;
+        let record = sim.record;
+        let mut fresh = crate::simulator::Simulation::new(&studio.doc.project, screen);
+        fresh.record = record;
+        studio.simulation = Some(fresh);
+    }
+    if let Some(last) = studio.simulation.as_ref().and_then(|s| s.log.last()) {
+        crate::widgets::muted(ui, last.clone());
+    }
+}
+
 fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
     layout
         .nodes
@@ -589,22 +678,28 @@ fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
 
 fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
     ui.horizontal(|ui| {
-        let current = studio.doc.project.widget(studio.screen).map(|s| s.name.clone()).unwrap_or_default();
+        let shown = studio.simulation.as_ref().map_or(studio.screen, |s| s.screen);
+        let current = studio.doc.project.widget(shown).map(|s| s.name.clone()).unwrap_or_default();
         let screens: Vec<(WidgetId, String)> =
             studio.doc.project.screens.iter().map(|s| (s.id, s.name.clone())).collect();
         egui::ComboBox::from_id_salt("canvas_screen").selected_text(format!("▣ {current}")).width(150.0).show_ui(
             ui,
             |ui| {
                 for (id, name) in screens {
-                    if ui.selectable_label(studio.screen == id, name).clicked() {
-                        studio.select_screen(id);
+                    if ui.selectable_label(shown == id, name).clicked() {
+                        match &mut studio.simulation {
+                            Some(sim) => sim.show_screen(id, ui.input(|i| i.time)),
+                            None => studio.select_screen(id),
+                        }
                     }
                 }
             },
         );
-        if ui.button("+").on_hover_text(tr("Add screen")).clicked() {
+        if studio.simulation.is_none() && ui.button("+").on_hover_text(tr("Add screen")).clicked() {
             studio.push(crate::commands::Command::AddScreen);
         }
+        ui.separator();
+        simulation_controls(ui, studio);
         ui.separator();
         let view = &mut studio.canvas;
         if ui.button("-").clicked() {

@@ -320,6 +320,8 @@ const LABEL: WidgetDef = WidgetDef {
         PropDef::new("recolor", "Recolor", K::Bool, D::Bool(false))
             .call("lv_label_set_recolor({obj}, {v});")
             .help("Enables `#RRGGBB text#` color commands."),
+        PropDef::new("translate", "Translate", K::Bool, D::Bool(false))
+            .help("With multi-language export, the text is translated with lv_i18n."),
     ],
     flags_off: &[ObjFlag::Clickable, ObjFlag::ClickFocusable],
     squareline: &["LABEL"],
@@ -524,9 +526,13 @@ const CHECKBOX: WidgetDef = WidgetDef {
     width: Coord::content(),
     height: Coord::content(),
     slots: &[MAIN, INDICATOR.sl(&["bullet"])],
-    props: &[PropDef::new("text", "Text", K::Text, D::Text("Check box"))
-        .call("lv_checkbox_set_text({obj}, {v});")
-        .sl(&["Title"])],
+    props: &[
+        PropDef::new("text", "Text", K::Text, D::Text("Check box"))
+            .call("lv_checkbox_set_text({obj}, {v});")
+            .sl(&["Title"]),
+        PropDef::new("translate", "Translate", K::Bool, D::Bool(false))
+            .help("With multi-language export, the text is translated with lv_i18n."),
+    ],
     flags_on: &[ObjFlag::Checkable, ObjFlag::ScrollOnFocus],
     flags_off: &[ObjFlag::Scrollable],
     squareline: &["CHECKBOX"],
