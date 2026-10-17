@@ -1,5 +1,8 @@
 # LVGLab
 
+[![CI](https://github.com/bluecraank/lvglab/actions/workflows/ci.yml/badge.svg)](https://github.com/bluecraank/lvglab/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A modern, open source UI designer for **LVGL 8** on **ESP32 with TFT_eSPI**, written in Rust.
 Design screens visually, import existing **SquareLine Studio** projects and export the UI as a
 ready-to-use library for PlatformIO or the Arduino IDE.
@@ -23,6 +26,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - [Translations](#translations)
 - [Architecture](#architecture)
 - [Development](#development)
+- [Star history](#star-history)
 - [License](#license)
 
 ---
@@ -365,6 +369,10 @@ The generated C code is checked by compiling an export with every widget type ag
 (`gcc -std=c99 -Wall -Wextra`) and by rendering it with LVGL on the desktop.
 
 Contributions are welcome: issues, translations, widget previews and importer improvements.
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=bluecraank/lvglab&type=Date)](https://www.star-history.com/#bluecraank/lvglab&Date)
 
 ## License
 
