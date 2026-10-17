@@ -1,5 +1,6 @@
 //! The dockable panels of the studio.
 
+mod assistant;
 mod events;
 mod fonts;
 mod images;
@@ -29,10 +30,11 @@ pub enum Panel {
     Timeline,
     Fonts,
     Images,
+    Assistant,
 }
 
 impl Panel {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Canvas,
         Self::Screens,
         Self::Layers,
@@ -43,6 +45,7 @@ impl Panel {
         Self::Timeline,
         Self::Fonts,
         Self::Images,
+        Self::Assistant,
     ];
 
     pub fn title(self) -> &'static str {
@@ -57,6 +60,7 @@ impl Panel {
             Self::Timeline => "Timeline",
             Self::Fonts => "Fonts",
             Self::Images => "Images",
+            Self::Assistant => "AI assistant",
         }
     }
 }
@@ -73,6 +77,7 @@ pub fn show(panel: Panel, ui: &mut egui::Ui, studio: &mut Studio) {
         Panel::Timeline => timeline::show(ui, studio),
         Panel::Fonts => fonts::show(ui, studio),
         Panel::Images => images::show(ui, studio),
+        Panel::Assistant => assistant::show(ui, studio),
     }
 }
 

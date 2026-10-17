@@ -1,0 +1,54 @@
+{
+  "summary": "Settings screen with three switches, a brightness slider and navigation back to the home screen.",
+  "screens": [
+    {
+      "name": "Settings",
+      "background": "#101418",
+      "widgets": [
+        { "name": "Title", "type": "label", "parent": "", "x": "0", "y": "16", "width": "content", "height": "content", "align": "TOP_MID",
+          "props": [ { "key": "text", "value": "Settings" } ],
+          "styles": [ { "part": "main", "state": "DEFAULT", "property": "text_font", "value": "montserrat_24" },
+                      { "part": "main", "state": "DEFAULT", "property": "text_color", "value": "#FFFFFF" } ],
+          "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "OptionList", "type": "container", "parent": "", "x": "0", "y": "10", "width": "90%", "height": "content", "align": "CENTER",
+          "props": [],
+          "styles": [ { "part": "main", "state": "DEFAULT", "property": "pad_row", "value": "12" } ],
+          "states": [], "hidden": false, "flex": "COLUMN", "events": [] },
+        { "name": "WifiRow", "type": "container", "parent": "OptionList", "x": "0", "y": "0", "width": "100%", "height": "40", "align": "TOP_LEFT",
+          "props": [], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "WifiLabel", "type": "label", "parent": "WifiRow", "x": "0", "y": "0", "width": "content", "height": "content", "align": "LEFT_MID",
+          "props": [ { "key": "text", "value": "Wi-Fi" } ], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "WifiSwitch", "type": "switch", "parent": "WifiRow", "x": "0", "y": "0", "width": "56", "height": "28", "align": "RIGHT_MID",
+          "props": [], "styles": [ { "part": "indicator", "state": "CHECKED", "property": "bg_color", "value": "#2EA0FF" } ],
+          "states": [ "CHECKED" ], "hidden": false, "flex": "", "events": [ { "trigger": "VALUE_CHANGED", "action": "call_function", "target": "on_wifi_toggled" } ] },
+        { "name": "NightRow", "type": "container", "parent": "OptionList", "x": "0", "y": "0", "width": "100%", "height": "40", "align": "TOP_LEFT",
+          "props": [], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "NightLabel", "type": "label", "parent": "NightRow", "x": "0", "y": "0", "width": "content", "height": "content", "align": "LEFT_MID",
+          "props": [ { "key": "text", "value": "Night mode" } ], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "NightSwitch", "type": "switch", "parent": "NightRow", "x": "0", "y": "0", "width": "56", "height": "28", "align": "RIGHT_MID",
+          "props": [], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "Brightness", "type": "slider", "parent": "OptionList", "x": "0", "y": "0", "width": "100%", "height": "12", "align": "TOP_LEFT",
+          "props": [ { "key": "range", "value": "10,100" }, { "key": "value", "value": "70" } ],
+          "styles": [ { "part": "knob", "state": "DEFAULT", "property": "bg_color", "value": "#FFFFFF" },
+                      { "part": "main", "state": "DEFAULT", "property": "bg_opa", "value": "30%" } ],
+          "states": [], "hidden": false, "flex": "", "events": [] },
+        { "name": "BackButton", "type": "button", "parent": "", "x": "0", "y": "-16", "width": "140", "height": "44", "align": "BOTTOM_MID",
+          "props": [], "styles": [ { "part": "main", "state": "DEFAULT", "property": "radius", "value": "circle" } ],
+          "states": [], "hidden": false, "flex": "", "events": [ { "trigger": "CLICKED", "action": "change_screen", "target": "Home" } ] },
+        { "name": "BackLabel", "type": "label", "parent": "BackButton", "x": "0", "y": "0", "width": "content", "height": "content", "align": "CENTER",
+          "props": [ { "key": "text", "value": "Back" } ], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] }
+      ]
+    },
+    {
+      "name": "Home",
+      "background": "",
+      "widgets": [
+        { "name": "OpenSettings", "type": "button", "parent": "", "x": "0", "y": "0", "width": "160", "height": "48", "align": "CENTER",
+          "props": [], "styles": [], "states": [], "hidden": false, "flex": "",
+          "events": [ { "trigger": "CLICKED", "action": "change_screen", "target": "Settings" } ] },
+        { "name": "OpenSettingsLabel", "type": "label", "parent": "OpenSettings", "x": "0", "y": "0", "width": "content", "height": "content", "align": "CENTER",
+          "props": [ { "key": "text", "value": "Settings" } ], "styles": [], "states": [], "hidden": false, "flex": "", "events": [] }
+      ]
+    }
+  ]
+}

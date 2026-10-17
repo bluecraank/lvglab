@@ -19,7 +19,7 @@ use crate::panels::{self, Panel};
 use crate::settings::{AppSettings, STORAGE_KEY};
 use crate::visuals;
 
-const DOCK_KEY: &str = "lvglab.dock";
+const DOCK_KEY: &str = "lvglab.dock.v2";
 
 /// A list of messages shown in a dialog (import/export results, errors).
 pub struct Report {
@@ -53,6 +53,7 @@ pub struct Studio {
     pub palette_filter: String,
     /// Set by the preferences to restore the default panel layout.
     pub reset_layout: bool,
+    pub assistant: crate::assistant::Assistant,
 }
 
 impl Studio {
@@ -80,6 +81,7 @@ impl Studio {
             layer_filter: String::new(),
             palette_filter: String::new(),
             reset_layout: false,
+            assistant: crate::assistant::Assistant::default(),
         }
     }
 
@@ -138,13 +140,21 @@ impl StudioApp {
         settings.sanitize();
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         cc.egui_ctx.set_zoom_factor(settings.ui_scale);
-        let dock = cc
+        let mut dock = cc
             .storage
             .and_then(|s| eframe::get_value::<DockState<Panel>>(s, DOCK_KEY))
             .filter(|d| d.find_tab(&Panel::Canvas).is_some())
             .unwrap_or_else(default_layout);
         i18n::set_language(settings.language);
         visuals::apply_appearance(&cc.egui_ctx, settings.appearance);
+        if let Some(name) = options.panel.as_deref() {
+            let panel = Panel::ALL
+                .iter()
+                .find(|p| p.title().eq_ignore_ascii_case(name) || format!("{p:?}").eq_ignore_ascii_case(name));
+            if let Some(location) = panel.and_then(|p| dock.find_tab(p)) {
+                dock.set_active_tab(location);
+            }
+        }
         let reopen = settings.reopen_last.then(|| settings.recent.first().cloned()).flatten().filter(|p| p.exists());
         let mut studio = Studio::new(settings);
         if let Some(file) = options.file.or(reopen) {
@@ -547,6 +557,7 @@ impl eframe::App for StudioApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame += 1;
         self.apply_settings(ctx);
+        self.studio.poll_assistant();
         let dir = self.studio.doc.dir().map(std::path::Path::to_path_buf);
         self.studio.assets.begin_frame(ctx, &self.studio.doc.project, dir.as_deref());
 
@@ -603,7 +614,7 @@ impl TabViewer for Viewer<'_> {
 
     fn scroll_bars(&self, tab: &Panel) -> [bool; 2] {
         match tab {
-            Panel::Canvas | Panel::Timeline => [false, false],
+            Panel::Canvas | Panel::Timeline | Panel::Assistant => [false, false],
             _ => [false, true],
         }
     }
@@ -626,8 +637,11 @@ fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
 pub fn default_layout() -> DockState<Panel> {
     let mut dock = DockState::new(vec![Panel::Canvas]);
     let tree = dock.main_surface_mut();
-    let [center, right] =
-        tree.split_right(NodeIndex::root(), 0.76, vec![Panel::Parameters, Panel::Style, Panel::Events]);
+    let [center, right] = tree.split_right(
+        NodeIndex::root(),
+        0.76,
+        vec![Panel::Parameters, Panel::Style, Panel::Events, Panel::Assistant],
+    );
     // The fraction is the share of the first (left/top) node of a split.
     let [center, left] = tree.split_left(center, 0.24, vec![Panel::Screens]);
     let [_, layers] = tree.split_below(left, 0.22, vec![Panel::Layers]);

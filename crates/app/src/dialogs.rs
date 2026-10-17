@@ -5,6 +5,7 @@ use lvglab_model::project::{DisplayShape, LvglVersion};
 use lvglab_model::{Palette, Project};
 
 use crate::app::Studio;
+use crate::assistant::effort_label;
 use crate::commands::Command;
 use crate::i18n::{self, Language, tr};
 use crate::modal::{self, Action, Tone};
@@ -243,6 +244,36 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     });
                     ui.end_row();
                 });
+            });
+            section(ui, "prefs_ai", tr("AI assistant"), true, |ui| {
+                grid(ui, "prefs_ai_grid", |ui| {
+                    label(ui, tr("API key"), tr("Anthropic API key. Stored in the editor settings on this computer."));
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(&mut s.ai_api_key).password(true).hint_text("sk-ant-…").desired_width(220.0));
+                        ui.hyperlink_to(tr("Get an API key"), "https://console.anthropic.com/settings/keys");
+                    });
+                    ui.end_row();
+                    label(ui, tr("Model"), tr("More capable models build better interfaces but cost more."));
+                    egui::ComboBox::from_id_salt("ai_model")
+                        .selected_text(lvglab_ai::MODELS.iter().find(|(id, _)| *id == s.ai_model).map_or("", |(_, n)| *n))
+                        .show_ui(ui, |ui| {
+                            for (id, name) in lvglab_ai::MODELS {
+                                ui.selectable_value(&mut s.ai_model, (*id).to_owned(), *name);
+                            }
+                        });
+                    ui.end_row();
+                    label(ui, tr("Effort"), tr("How thoroughly the model works on a request; higher takes longer."));
+                    egui::ComboBox::from_id_salt("ai_effort").selected_text(tr(effort_label(&s.ai_effort))).show_ui(ui, |ui| {
+                        for effort in lvglab_ai::EFFORTS {
+                            ui.selectable_value(&mut s.ai_effort, (*effort).to_owned(), tr(effort_label(effort)));
+                        }
+                    });
+                    ui.end_row();
+                });
+                if s.ai_api_key.trim().is_empty() && std::env::var("ANTHROPIC_API_KEY").is_ok_and(|k| !k.is_empty()) {
+                    muted(ui, tr("Using the key from the environment variable ANTHROPIC_API_KEY."));
+                }
+                muted(ui, tr("Requests are billed to your Anthropic account. The project description is sent with each request."));
             });
             section(ui, "prefs_export", tr("Export"), true, |ui| {
                 ui.checkbox(&mut s.open_export_folder, tr("Open the folder after exporting"));
