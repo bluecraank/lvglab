@@ -13,6 +13,7 @@ use crate::widgets::{self, muted};
 /// Frequently used properties offered as one-click buttons.
 const QUICK: &[(&str, &[StyleProp])] = &[
     ("Background", &[StyleProp::BgColor, StyleProp::BgOpa]),
+    ("Background image", &[StyleProp::BgImgSrc]),
     ("Border", &[StyleProp::BorderColor, StyleProp::BorderWidth, StyleProp::BorderOpa]),
     ("Radius", &[StyleProp::Radius]),
     ("Text", &[StyleProp::TextColor, StyleProp::TextFont]),

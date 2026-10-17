@@ -3,7 +3,7 @@
 mod assistant;
 mod events;
 mod fonts;
-mod images;
+pub mod images;
 mod layers;
 mod palette;
 mod parameters;

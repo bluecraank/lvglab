@@ -110,16 +110,52 @@ fn image_dialog() -> rfd::FileDialog {
 
 fn add_images(studio: &mut Studio) {
     let Some(paths) = image_dialog().pick_files() else { return };
-    let dir = studio.doc.dir().map(Path::to_path_buf);
     for path in paths {
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-        let base: String = stem.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-        let mut name = base.clone();
-        let mut n = 2;
-        while studio.doc.project.assets.image(&name).is_some() {
-            name = format!("{base}_{n}");
-            n += 1;
-        }
-        studio.doc.project.assets.images.push(ImageAsset { name, path: relative(&path, dir.as_deref()) });
+        let name = asset_name(&studio.doc.project, &path, &[]);
+        add_image(studio, name, &path);
+    }
+}
+
+fn add_image(studio: &mut Studio, name: String, path: &Path) {
+    let dir = studio.doc.dir().map(Path::to_path_buf);
+    studio.doc.project.assets.images.push(ImageAsset { name, path: relative(path, dir.as_deref()) });
+}
+
+/// A free asset name derived from the file name; `taken` lists names that
+/// are about to be added.
+pub fn asset_name(project: &Project, path: &Path, taken: &[String]) -> String {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    let base: String = stem.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let mut name = base.clone();
+    let mut n = 2;
+    while project.assets.image(&name).is_some() || taken.contains(&name) {
+        name = format!("{base}_{n}");
+        n += 1;
+    }
+    name
+}
+
+/// Images chosen with "Add image…" in an image field, waiting to be added
+/// to the project.
+pub fn pending_id() -> egui::Id {
+    egui::Id::new("lvglab_pending_images")
+}
+
+/// Picks an image file for an image field; the asset is added by
+/// [`add_pending`] at the end of the frame.
+pub fn pick_for_field(ctx: &egui::Context, project: &Project) -> Option<String> {
+    let path = image_dialog().pick_file()?;
+    let mut pending: Vec<(String, std::path::PathBuf)> = ctx.data_mut(|d| d.get_temp(pending_id()).unwrap_or_default());
+    let taken: Vec<String> = pending.iter().map(|(n, _)| n.clone()).collect();
+    let name = asset_name(project, &path, &taken);
+    pending.push((name.clone(), path));
+    ctx.data_mut(|d| d.insert_temp(pending_id(), pending));
+    Some(name)
+}
+
+pub fn add_pending(ctx: &egui::Context, studio: &mut Studio) {
+    let pending: Option<Vec<(String, std::path::PathBuf)>> = ctx.data_mut(|d| d.remove_temp(pending_id()));
+    for (name, path) in pending.unwrap_or_default() {
+        add_image(studio, name, &path);
     }
 }
