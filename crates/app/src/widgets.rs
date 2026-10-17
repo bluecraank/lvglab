@@ -197,8 +197,12 @@ pub fn image_ref(ui: &mut Ui, id: impl std::hash::Hash, value: &mut String, proj
                 changed = true;
             }
         }
-        if project.assets.images.is_empty() {
-            muted(ui, tr("Add images in the Images panel."));
+        ui.separator();
+        if ui.button(tr("Add image…")).clicked() {
+            if let Some(name) = crate::panels::images::pick_for_field(ui.ctx(), project) {
+                *value = name;
+                changed = true;
+            }
         }
     });
     changed

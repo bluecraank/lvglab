@@ -251,6 +251,12 @@ impl StudioApp {
                         ui.close_menu();
                     }
                 });
+                ui.separator();
+                let export = egui::Button::new(egui::RichText::new(tr("Export library")).color(egui::Color32::WHITE))
+                    .fill(visuals::ACCENT);
+                if ui.add(export).on_hover_text("Ctrl+E").clicked() {
+                    self.studio.push(Command::ExportLibrary);
+                }
             });
         });
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
@@ -280,15 +286,6 @@ impl StudioApp {
                     .clicked()
                 {
                     s.push(Command::Redo);
-                }
-                ui.separator();
-                if ui.button(tr("Import SquareLine")).on_hover_text("Ctrl+I").clicked() {
-                    s.push(Command::ImportSquareLine);
-                }
-                let export = egui::Button::new(egui::RichText::new(tr("Export library")).color(egui::Color32::WHITE))
-                    .fill(visuals::ACCENT);
-                if ui.add(export).on_hover_text("Ctrl+E").clicked() {
-                    s.push(Command::ExportLibrary);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(tr("Project settings")).clicked() {
@@ -610,6 +607,7 @@ impl eframe::App for StudioApp {
         for command in std::mem::take(&mut self.studio.commands) {
             self.studio.execute(command, false);
         }
+        crate::panels::images::add_pending(ctx, &mut self.studio);
         self.observe_changes(ctx);
         self.autosave(ctx);
         self.handle_close(ctx);
