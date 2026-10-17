@@ -6,8 +6,6 @@ use std::path::Path;
 
 use lvglab_model::project::FontAsset;
 
-use crate::naming::font_symbol;
-
 #[derive(Debug, thiserror::Error)]
 pub enum FontError {
     #[error("font `{name}` has no TTF/OTF file assigned")]
@@ -80,7 +78,15 @@ struct Glyph {
     ofs_y: i32,
 }
 
-pub fn convert(font: &FontAsset, base_dir: Option<&Path>, header: &str) -> Result<String, FontError> {
+/// C source of a font. `symbol` names the `lv_font_t`, `include` is the
+/// header that provides LVGL.
+pub fn convert(
+    font: &FontAsset,
+    base_dir: Option<&Path>,
+    symbol: &str,
+    header: &str,
+    include: &str,
+) -> Result<String, FontError> {
     if font.path.trim().is_empty() {
         return Err(FontError::NoFile { name: font.name.clone() });
     }
@@ -94,10 +100,20 @@ pub fn convert(font: &FontAsset, base_dir: Option<&Path>, header: &str) -> Resul
         _ => 4,
     };
     let points = code_points(&font.ranges, &font.symbols)?;
-    Ok(render(&font.name, &parsed, size, bpp, &points, header))
+    Ok(render(&font.name, symbol, &parsed, size, bpp, &points, header, include))
 }
 
-fn render(name: &str, font: &fontdue::Font, size: f32, bpp: u8, points: &[u32], header: &str) -> String {
+#[allow(clippy::too_many_arguments)]
+fn render(
+    name: &str,
+    symbol: &str,
+    font: &fontdue::Font,
+    size: f32,
+    bpp: u8,
+    points: &[u32],
+    header: &str,
+    include: &str,
+) -> String {
     let mut bitmap: Vec<u8> = Vec::new();
     let mut glyphs = vec![Glyph { bitmap_index: 0, adv_w: 0, box_w: 0, box_h: 0, ofs_x: 0, ofs_y: 0 }];
     let mut included = Vec::new();
@@ -121,12 +137,12 @@ fn render(name: &str, font: &fontdue::Font, size: f32, bpp: u8, points: &[u32], 
     }
     let LineMetrics { line_height, base_line } = line_metrics(font, size);
 
-    let symbol = font_symbol(name);
     let mut out = String::new();
     out.push_str(header);
     let _ = writeln!(out, "// Font {name}: {size} px, {bpp} bpp, {} glyphs\n", included.len());
-    out.push_str(
-        "#include \"../ui.h\"\n\n#ifndef LV_ATTRIBUTE_LARGE_CONST\n    #define LV_ATTRIBUTE_LARGE_CONST\n#endif\n\n",
+    let _ = write!(
+        out,
+        "#include \"{include}\"\n\n#ifndef LV_ATTRIBUTE_LARGE_CONST\n    #define LV_ATTRIBUTE_LARGE_CONST\n#endif\n\n"
     );
     out.push_str("static LV_ATTRIBUTE_LARGE_CONST const uint8_t glyph_bitmap[] = {\n");
     if bitmap.is_empty() {
@@ -238,7 +254,7 @@ mod tests {
         ];
         let Some(path) = candidates.iter().find(|p| Path::new(p).exists()) else { return };
         let asset = FontAsset { name: "Test".into(), path: (*path).into(), size: 20, ..FontAsset::default() };
-        let c = convert(&asset, None, "// h\n").unwrap();
+        let c = convert(&asset, None, "ui_font_Test", "// h\n", "ui.h").unwrap();
         assert!(c.contains("const lv_font_t ui_font_Test = {"));
         assert!(c.contains(".bpp = 4,"));
         assert!(c.contains(".range_start = 32, .range_length = 95"));

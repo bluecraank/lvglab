@@ -3,6 +3,7 @@
 //! inherited from the parent.
 
 use crate::color::{Color, Palette};
+use crate::color_theme::ColorThemes;
 use crate::coord::Coord;
 use crate::flags::{ObjState, StateMask};
 use crate::project::{DisplaySettings, ThemeSettings};
@@ -258,11 +259,29 @@ impl Theme {
 /// Resolves the value LVGL would use for a style property.
 pub struct StyleResolver<'a> {
     pub theme: &'a Theme,
+    /// Color themes for properties bound to theme variables.
+    pub color_themes: Option<&'a ColorThemes>,
 }
 
 impl<'a> StyleResolver<'a> {
     pub fn new(theme: &'a Theme) -> Self {
-        Self { theme }
+        Self { theme, color_themes: None }
+    }
+
+    pub fn with_color_themes(mut self, color_themes: &'a ColorThemes) -> Self {
+        self.color_themes = Some(color_themes);
+        self
+    }
+
+    /// Replaces a theme variable reference by its value in the active theme.
+    fn resolve_theme(&self, prop: StyleProp, value: StyleValue) -> Option<StyleValue> {
+        let StyleValue::Theme(variable) = &value else { return Some(value) };
+        let color = self.color_themes?.value(variable)?;
+        match prop.kind() {
+            crate::style::StyleKind::Color => Some(StyleValue::Color(color.color)),
+            crate::style::StyleKind::Opa => Some(StyleValue::Int(i32::from(color.opa))),
+            _ => None,
+        }
     }
 
     /// `path` lists the widget's ancestors from the screen down to the
@@ -270,7 +289,7 @@ impl<'a> StyleResolver<'a> {
     pub fn get(&self, path: &[&Widget], slot: &str, state: StateMask, prop: StyleProp) -> Option<StyleValue> {
         let (widget, ancestors) = path.split_last()?;
         if let Some(value) = widget.styles.effective(slot, state, prop) {
-            return Some(value.clone());
+            return self.resolve_theme(prop, value.clone());
         }
         if let Some(value) = self.theme.value(widget.kind, slot, state, prop) {
             return Some(value);

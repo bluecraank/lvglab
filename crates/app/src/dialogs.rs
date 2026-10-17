@@ -1,6 +1,7 @@
 //! Modal and floating dialogs: project settings, preferences, reports.
 
 use eframe::egui;
+use lvglab_model::color_theme::{ColorTheme, ThemeColor};
 use lvglab_model::project::{DisplayShape, LvglVersion};
 use lvglab_model::{Palette, Project};
 
@@ -106,8 +107,29 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
             });
             section(ui, "ps_export", tr("Library export"), true, |ui| {
                 grid(ui, "ps_export_grid", |ui| {
-                    label(ui, tr("Library name"), tr("Folder and library name, e.g. ui."));
-                    ui.text_edit_singleline(&mut p.export.library_name);
+                    label(
+                        ui,
+                        tr("Library name"),
+                        tr("Folder and library name, e.g. ui_round. Use it in lib_ignore of platformio.ini."),
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut p.export.library_name).hint_text("ui"));
+                    ui.end_row();
+                    label(
+                        ui,
+                        tr("Symbol prefix"),
+                        tr("Prefix of all names and files (ui → ui.h, ui_init, ui_Main01). Libraries linked into the same firmware need different prefixes."),
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut p.export.prefix).hint_text("ui").desired_width(120.0));
+                    ui.end_row();
+                    label(
+                        ui,
+                        tr("Multiple languages"),
+                        tr("Wraps texts marked as translatable in _() of lv_i18n and generates ui_relocalize()."),
+                    );
+                    ui.checkbox(&mut p.export.multilang, tr("Translate with lv_i18n"));
+                    ui.end_row();
+                    label(ui, tr("Byte swap"), tr("Must match LV_COLOR_16_SWAP in lv_conf.h (TFT_eSPI usually uses 1)."));
+                    ui.checkbox(&mut p.export.swap_bytes, "LV_COLOR_16_SWAP 1");
                     ui.end_row();
                     label(
                         ui,
@@ -132,11 +154,76 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
                     tr("Requirements in your lv_conf.h: LV_COLOR_DEPTH 16 and the Montserrat fonts the UI uses."),
                 );
             });
+            section(ui, "ps_color_themes", tr("Color themes"), false, |ui| color_themes(ui, p));
             if p.display != before {
                 studio.canvas.fit_pending = true;
             }
         });
     studio.show_project_settings = open;
+}
+
+/// Theme colors: variables with one value per theme. Styles bound to a
+/// variable follow `ui_theme_set()` at runtime.
+fn color_themes(ui: &mut egui::Ui, p: &mut Project) {
+    let themes = &mut p.color_themes;
+    if themes.themes.is_empty() {
+        themes.themes.push(ColorTheme { name: "Default".to_owned(), values: Vec::new() });
+    }
+    themes.normalize();
+    ui.horizontal_wrapped(|ui| {
+        label(ui, tr("Theme"), tr("The first theme is the default theme. The editor shows the selected one."));
+        for (i, theme) in themes.themes.iter().enumerate() {
+            if ui.selectable_label(themes.active == i, &theme.name).clicked() {
+                themes.active = i;
+            }
+        }
+        if ui.small_button("+").on_hover_text(tr("Add theme")).clicked() {
+            let name = format!("Theme{}", themes.themes.len() + 1);
+            themes.add_theme(name);
+            themes.active = themes.themes.len() - 1;
+        }
+    });
+    let active = themes.active;
+    ui.horizontal(|ui| {
+        ui.label(tr("Name"));
+        ui.text_edit_singleline(&mut themes.themes[active].name);
+        if themes.themes.len() > 1 && ui.small_button(tr("Remove theme")).clicked() {
+            themes.remove_theme(active);
+        }
+    });
+    ui.add_space(4.0);
+    let mut rename = None;
+    let mut remove = None;
+    grid(ui, "ps_theme_colors", |ui| {
+        for index in 0..themes.variables.len() {
+            let mut name = themes.variables[index].clone();
+            if ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0)).changed() {
+                rename = Some((themes.variables[index].clone(), name));
+            }
+            let value = &mut themes.themes[active].values[index];
+            ui.horizontal(|ui| {
+                widgets::color(ui, &mut value.color);
+                ui.add(egui::DragValue::new(&mut value.opa).range(0..=255).prefix("α "));
+                if ui.small_button("✕").on_hover_text(tr("Remove color")).clicked() {
+                    remove = Some(index);
+                }
+            });
+            ui.end_row();
+        }
+    });
+    if ui.button(tr("Add color")).clicked() {
+        let mut n = themes.variables.len() + 1;
+        while themes.index_of(&format!("Color{n}")).is_some() {
+            n += 1;
+        }
+        themes.add_variable(format!("Color{n}"), ThemeColor::default());
+    }
+    if let Some(index) = remove {
+        themes.remove_variable(index);
+    }
+    if let Some((old, new)) = rename {
+        p.rename_theme_variable(&old, &new);
+    }
 }
 
 fn palette_choice(ui: &mut egui::Ui, id: &str, value: &mut Palette) {

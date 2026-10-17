@@ -59,30 +59,32 @@ pub fn write(root: &Path, output: &Output, managed_dirs: &[&str]) -> io::Result<
 
 fn build_ui(project: &Project, project_dir: Option<&Path>) -> Output {
     let header = ui::header(project);
+    let names = naming::Naming::new(project);
+    let include = format!("{}.h", names.prefix());
     let mut warnings = Vec::new();
     let mut files = Vec::new();
     let mut decls = ui::AssetDecls { montserrat: used_builtin_fonts(project), ..ui::AssetDecls::default() };
 
     for asset in &project.assets.images {
         let path = Project::resolve_path(project_dir, &asset.path);
-        let converted = image::load(&path).unwrap_or_else(|err| {
+        let converted = image::load(&path, project.export.swap_bytes).unwrap_or_else(|err| {
             warnings.push(format!("{err}; a transparent placeholder is used"));
             image::placeholder()
         });
-        let symbol = naming::image_symbol(&asset.name);
+        let symbol = names.image(&asset.name);
         files.push(GeneratedFile::text(
-            format!("images/{symbol}.c"),
-            image::to_c(&asset.name, &converted, &header),
+            format!("{symbol}.c"),
+            image::to_c(&asset.name, &symbol, &converted, &header, &include),
             WritePolicy::Overwrite,
         ));
-        decls.images.push(symbol);
+        decls.images.push((symbol, asset.path.clone()));
     }
 
     for asset in &project.assets.fonts {
-        let symbol = naming::font_symbol(&asset.name);
-        match font::convert(asset, project_dir, &header) {
+        let symbol = names.font(&asset.name);
+        match font::convert(asset, project_dir, &symbol, &header, &include) {
             Ok(code) => {
-                files.push(GeneratedFile::text(format!("fonts/{symbol}.c"), code, WritePolicy::Overwrite));
+                files.push(GeneratedFile::text(format!("{symbol}.c"), code, WritePolicy::Overwrite));
                 decls.fonts.push(symbol);
             }
             Err(err) => {
@@ -162,7 +164,7 @@ mod tests {
         project.assets.fonts.push(FontAsset { name: "Big".into(), size: 41, ..FontAsset::default() });
         let output = generate_library(&project, None);
         let paths: Vec<_> = output.files.iter().map(|f| f.path.as_str()).collect();
-        for expected in ["library.json", "library.properties", "src/ui.h", "src/ui.c", "src/screens/ui_Screen1.c"] {
+        for expected in ["library.json", "library.properties", "src/ui.h", "src/ui.c", "src/ui_Screen1.c"] {
             assert!(paths.contains(&expected), "{expected} missing in {paths:?}");
         }
         assert!(output.warnings.iter().any(|w| w.contains("Montserrat 40")), "{:?}", output.warnings);

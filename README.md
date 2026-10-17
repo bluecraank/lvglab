@@ -62,15 +62,27 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - Layers with drag & drop reordering and reparenting, visibility toggle, filtering and context menu.
 - Image assets (PNG/JPEG/BMP) and font assets (TTF/OTF) appear in the preview and are converted when
   you export.
+- **Simulator** (F5): play the UI on the canvas. Buttons show their pressed style, switches and check
+  boxes toggle, sliders and arcs follow the mouse, and the project's events run (screen changes, flags,
+  states, texts, values). The **Record** mode draws the pointer and every click for screen recordings.
+- **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound
+  to a theme color follow `ui_theme_set()` at runtime.
 - **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.
 - Multi language UI (English, German), light and dark appearance.
 - Project settings: LVGL version, resolution (with presets), round or rectangular display, theme.
 
 **Export**
 
-- Clean, readable LVGL 8 C code, one file per screen, structured like a SquareLine export.
+- Clean, readable LVGL 8 C code with the **same file layout and API as a SquareLine export** (`ui_init`,
+  `ui_<Screen>_screen_init/destroy/relocalize`, `ui_img_<file>_png`, `ui_font_<name>`, `ui_theme_set`,
+  `ui_object_set_themeable_style_property`, `ui____initial_actions0`), so it replaces a SquareLine export
+  without changes to the firmware.
+- Configurable symbol prefix (`ui`, `sett`, …) for several UI libraries in one firmware.
+- Multi-language texts with [lv_i18n](https://github.com/lvgl/lv_i18n) (`_("text")`, `ui_relocalize()`).
+- Byte-swapped images for `LV_COLOR_16_SWAP 1` (checked at compile time).
 - Images are converted to `lv_img_dsc_t` (RGB565, with alpha channel when needed).
 - Fonts are rendered to LVGL bitmap fonts (`lv_font_fmt_txt`, 1/2/4/8 bpp, custom Unicode ranges).
+  All font and image data is `const`, so it stays in flash.
 - The export only rewrites generated files. It never touches your own code and removes stale generated
   files, for example of deleted screens.
 
@@ -109,13 +121,14 @@ Platform notes:
 ### Command line
 
 ```text
-lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--screenshot <out.png>]
+lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--simulate] [--screenshot <out.png>]
 ```
 
 | Option | Meaning |
 |---|---|
 | `project.lvglab` / `file.spj` | Opens a studio project, or imports a SquareLine project. |
 | `--select <widget>` | Selects a widget by name after opening. |
+| `--simulate` | Starts the simulator with the record overlay. |
 | `--dialog <name>` | Opens `preferences`, `about`, `discard` or `close` at start (documentation). |
 | `--screenshot <out.png>` | Renders the window into a PNG and exits (documentation, CI). |
 
@@ -125,7 +138,7 @@ Try the bundled example: `cargo run --release -- examples/showcase/showcase.lvgl
 
 | Panel | Purpose |
 |---|---|
-| **Canvas** | Preview of the current screen. Click to select, drag to move, use the handles to resize. Ctrl + mouse wheel zooms, the wheel or the middle mouse button pans. |
+| **Canvas** | Preview of the current screen. Click to select, drag to move, use the handles to resize. Ctrl + mouse wheel zooms, the wheel or the middle mouse button pans. **▶ Simulate** (F5) plays the UI; **Record** shows pointer and clicks; **↺** restarts with the current project. |
 | **Screens** | All screens. The first one is loaded at start. Right-click to reorder, duplicate or delete. |
 | **Layers** | Widget tree of the current screen. Drag rows to reorder or reparent. The eye toggles the hidden flag. |
 | **Widgets** | Palette grouped into Basic, Controls, Visualization and Containers. Click to add to the selection, or drag onto the canvas. |
@@ -160,6 +173,7 @@ Keyboard shortcuts:
 | Del | Delete selection |
 | Arrow keys (+ Shift) | Move selection by 1 px (Shift: configurable, default 10 px) |
 | Space + drag, middle mouse | Pan the canvas |
+| F5 / Esc | Start or stop the simulator |
 
 ## AI assistant
 
@@ -192,6 +206,10 @@ The import creates a new, unsaved studio project. Save it as `.lvglab` to keep i
 What is imported:
 
 - Display resolution, round/rectangular shape, theme mode and colors, LVGL version
+- Export settings: variable prefix (`custom_variable_prefix`), multi-language mode, byte swap of the
+  TFT_eSPI board. The library is named after the project folder (e.g. `ui_round`).
+- **Color themes** from `Themes.slt`. Styles that use a theme color stay bound to it.
+- Texts marked as translatable (labels, check boxes)
 - All screens and widgets with name, position and size (including % and content units), alignment
 - Widget properties (texts, options, ranges, values, modes, keyboard target, …)
 - Flags, states, scroll settings, extended click area, flex layouts
@@ -213,7 +231,7 @@ Things to know:
 - A font that is referenced but has no `.fcfg` gets its size from the trailing digits of its name
   (`FontCBI40` → 40 px). Assign the TTF file in the **Fonts** panel. Until then the export falls back
   to the nearest built-in Montserrat size, so the project still compiles.
-- **Animations** and SquareLine **events** are not imported yet. The import report lists everything that was skipped.
+- **Animations**, SquareLine **events** and **components** (`.ecomp`) are not imported yet. The import report lists everything that was skipped.
 - Unknown object types are imported as Panels and listed in the report.
 - Tested with real SquareLine 1.6 projects (round 466×466 and rectangular). The exports compile against LVGL 8.3.11,
   and when rendered with LVGL they match SquareLine's own screenshots.
@@ -225,19 +243,30 @@ Things to know:
 directly into the `lib` folder of your PlatformIO project.
 
 ```text
-ui/
+ui_round/                   library name (project settings)
 ├── library.json            PlatformIO library manifest
 ├── library.properties      Arduino IDE library manifest
 └── src/
-    ├── ui.h / ui.c         ui_init(), theme, all object declarations
-    ├── ui_helpers.h/.c     screen change and flag/state helpers
-    ├── ui_events.h         declarations of your event functions
-    ├── ui_events_weak.c    empty weak defaults so the project always links
-    ├── ui_events.c         YOUR code: created once, never overwritten
-    ├── screens/ui_<Screen>.c
-    ├── images/ui_img_<name>.c
-    └── fonts/ui_font_<name>.c
+    ├── ui.h / ui.c                 ui_init(), ui_destroy(), ui_relocalize(), images, fonts
+    ├── ui_<Screen>.h / .c          one pair per screen: _screen_init/_destroy/_relocalize
+    ├── ui_helpers.h/.c             screen change and flag/state helpers
+    ├── ui_theme_manager.h/.c       ui_object_set_themeable_style_property(), ...
+    ├── ui_themes.h/.c              UI_THEME_*, theme colors, ui_theme_set(), ui_theme_idx
+    ├── ui_events.h                 declarations of your event functions
+    ├── ui_events_weak.c            empty weak defaults so the project always links
+    ├── ui_events.c                 YOUR code: created once, never overwritten
+    ├── ui_img_<file>_png.c
+    └── ui_font_<name>.c
 ```
+
+All names start with the **symbol prefix** (`ui` above). Settings under **Project settings → Library export**:
+
+| Setting | Meaning |
+|---|---|
+| Library name | Folder and library name, e.g. `ui_round` (the name used in `lib_ignore`). |
+| Symbol prefix | Prefix of all files and symbols. Use different prefixes for libraries in one firmware (`ui`, `sett`). |
+| Multiple languages | Texts marked as *Translate* are wrapped in `_()` of lv_i18n; `ui.h` includes `lv_i18n.h`. |
+| Byte swap | Image pixels for `LV_COLOR_16_SWAP 1`. `ui.c` stops the build with `#error` if `lv_conf.h` differs. |
 
 Generated files start with `// Generated by LVGLab`. Only those files are overwritten or
 removed on the next export.
@@ -319,7 +348,20 @@ The LVGL tick must run, e.g. with `LV_TICK_CUSTOM 1` and `LV_TICK_CUSTOM_SYS_TIM
 ## Project file format
 
 Studio projects (`.lvglab`) are pretty-printed JSON and work well with git. Values that equal
-the LVGL defaults are left out, so diffs stay small. Asset paths are stored relative to the project file.
+the LVGL defaults are left out, so diffs stay small.
+
+Saving makes the project folder self-contained: every image and TTF/OTF file the project uses is
+copied into an `assets/` folder next to the `.lvglab` file, and the paths are stored relative to it.
+Files with the same name get a suffix (`logo_2.png`). **Save as** into another folder copies the assets
+again. Missing files are listed after saving.
+
+```text
+MyProject/
+├── MyProject.lvglab
+└── assets/
+    ├── background.png
+    └── calibri-bold-italic.ttf
+```
 
 ```json
 {

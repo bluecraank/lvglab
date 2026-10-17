@@ -27,6 +27,9 @@ pub struct SpjInfo {
     pub theme_dark: Option<bool>,
     pub theme_color1: Option<i64>,
     pub theme_color2: Option<i64>,
+    pub custom_variable_prefix: Option<String>,
+    /// `ENABLE` if texts are translated with lv_i18n.
+    pub multilang: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,4 +95,31 @@ pub struct FontConfig {
 
 fn default_bpp() -> u8 {
     4
+}
+
+/// SquareLine's color themes (`Themes.slt` next to the project file).
+#[derive(Debug, Deserialize)]
+pub struct ThemesFile {
+    pub deftheme: ThemeDef,
+    #[serde(default)]
+    pub themes: Vec<ThemeDef>,
+    #[serde(default)]
+    pub selected_theme: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ThemeDef {
+    pub name: String,
+    #[serde(default)]
+    pub properties: Vec<ThemeColorDef>,
+}
+
+/// A theme variable; `nid` is what styles reference in `integer`.
+#[derive(Debug, Deserialize)]
+pub struct ThemeColorDef {
+    pub nid: i64,
+    #[serde(default)]
+    pub strval: String,
+    #[serde(default)]
+    pub intarray: Vec<i64>,
 }

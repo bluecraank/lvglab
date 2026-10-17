@@ -95,6 +95,9 @@ fn format_prop(project: &Project, value: &PropValue) -> String {
     }
 }
 
+/// Theme colors are written as `theme:<variable>` for color and opacity properties.
+pub const THEME_PREFIX: &str = "theme:";
+
 fn format_style(value: &StyleValue) -> String {
     match value {
         StyleValue::Int(i) => i.to_string(),
@@ -102,6 +105,7 @@ fn format_style(value: &StyleValue) -> String {
         StyleValue::Color(c) => c.to_hex_string(),
         StyleValue::Bool(b) => b.to_string(),
         StyleValue::Enum(s) | StyleValue::Font(s) | StyleValue::Image(s) => s.clone(),
+        StyleValue::Theme(variable) => format!("{THEME_PREFIX}{variable}"),
     }
 }
 
@@ -324,6 +328,16 @@ impl Builder<'_> {
             return;
         };
         let text = spec.value.trim();
+        if let Some(variable) = text.strip_prefix(THEME_PREFIX).map(str::trim) {
+            if matches!(prop.kind(), StyleKind::Color | StyleKind::Opa)
+                && self.project.color_themes.index_of(variable).is_some()
+            {
+                widget.styles.set(slot, state, prop, StyleValue::Theme(variable.to_owned()));
+            } else {
+                self.warn(format!("{}: theme color `{variable}` cannot be used for {}", widget.name, prop.name()));
+            }
+            return;
+        }
         let value = match prop.kind() {
             StyleKind::Coord => text.parse::<Coord>().ok().map(StyleValue::Coord),
             StyleKind::Int { min, max } => {

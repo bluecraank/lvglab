@@ -2,7 +2,7 @@
 //! after the frame's UI pass, which keeps borrowing simple and behavior
 //! consistent between menus, shortcuts and context menus.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lvglab_model::project::PROJECT_EXTENSION;
 use lvglab_model::{Project, WidgetId, WidgetKind};
@@ -191,11 +191,27 @@ impl Studio {
     }
 
     fn save_to(&mut self, path: PathBuf) {
+        // Images and fonts are copied into `assets/` next to the project file.
+        let old_dir = self.doc.dir().map(Path::to_path_buf);
+        let dir = path.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        let missing = match self.doc.project.collect_assets(old_dir.as_deref(), &dir) {
+            Ok(missing) => missing,
+            Err(err) => return self.show_error(tr("Save failed"), err.to_string()),
+        };
         match self.doc.project.save(&path) {
             Ok(()) => {
                 self.settings.add_recent(path.clone());
                 self.doc.mark_saved(path.clone());
                 self.notify(trf("Saved {}", &[&path.display()]));
+                if !missing.is_empty() {
+                    self.report = Some(Report {
+                        tone: Tone::Warning,
+                        title: tr("Saved with missing assets").to_owned(),
+                        message: tr("These asset files were not found and could not be copied into the project's assets folder:")
+                            .to_owned(),
+                        lines: missing,
+                    });
+                }
             }
             Err(err) => self.show_error(tr("Save failed"), err.to_string()),
         }

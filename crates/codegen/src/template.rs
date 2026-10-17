@@ -6,7 +6,7 @@ use lvglab_model::layout::parse_points;
 use lvglab_model::prop::{PropDef, PropKind, PropValue};
 use lvglab_model::style::StyleValue;
 
-use crate::naming::{NameTable, font_ref, image_ref};
+use crate::naming::Naming;
 
 /// Escapes text as a C string literal. Non-ASCII characters stay UTF-8.
 pub fn c_string(text: &str) -> String {
@@ -48,14 +48,14 @@ impl Formatted {
 }
 
 /// Formats a widget property. `array_name` names static arrays.
-pub fn format_prop(def: &PropDef, value: &PropValue, array_name: &str, names: &NameTable) -> Formatted {
+pub fn format_prop(def: &PropDef, value: &PropValue, array_name: &str, names: &Naming) -> Formatted {
     match (def.kind, value) {
         (_, PropValue::Bool(v)) => Formatted::expr(v.to_string()),
         (_, PropValue::Int(v)) => Formatted::expr(v.to_string()),
         (_, PropValue::Enum(v)) => Formatted::expr(v.clone()),
         (_, PropValue::Color(c)) => Formatted::expr(c.c_expr()),
         (_, PropValue::Pair(a, b)) => Formatted::expr(format!("{a}, {b}")).field("0", a).field("1", b),
-        (_, PropValue::Image(name)) => Formatted::expr(image_ref(name)),
+        (_, PropValue::Image(name)) => Formatted::expr(names.image_ref(name)),
         (_, PropValue::WidgetRef(id)) => Formatted::expr(id.map_or("NULL", |id| names.var(id))),
         (_, PropValue::Date { year, month, day }) => Formatted::expr(format!("{year}, {month}, {day}"))
             .field("year", year)
@@ -81,7 +81,7 @@ pub fn format_prop(def: &PropDef, value: &PropValue, array_name: &str, names: &N
             static_array(format!("static const char * {array_name}[] = {{{}}};", items.join(", ")), array_name, len)
         }
         (PropKind::ImageArray, PropValue::Text(text)) => {
-            let refs: Vec<String> = lines(text).map(image_ref).collect();
+            let refs: Vec<String> = lines(text).map(|l| names.image_ref(l)).collect();
             let len = refs.len();
             static_array(
                 format!("static const lv_img_dsc_t * {array_name}[] = {{{}}};", refs.join(", ")),
@@ -114,17 +114,19 @@ pub fn lines(text: &str) -> impl Iterator<Item = &str> {
     text.lines().map(str::trim).filter(|l| !l.is_empty())
 }
 
-/// Formats a style value.
-pub fn format_style(value: &StyleValue) -> String {
-    match value {
+/// Formats a style value. Theme variables are not plain values (they are
+/// bound with `<prefix>_object_set_themeable_style_property`) and yield `None`.
+pub fn format_style(value: &StyleValue, names: &Naming) -> Option<String> {
+    Some(match value {
         StyleValue::Int(v) => v.to_string(),
         StyleValue::Coord(c) => c.c_expr(),
         StyleValue::Color(c) => c.c_expr(),
         StyleValue::Bool(b) => b.to_string(),
         StyleValue::Enum(e) => e.clone(),
-        StyleValue::Font(f) => font_ref(f),
-        StyleValue::Image(i) => image_ref(i),
-    }
+        StyleValue::Font(f) => names.font_ref(f),
+        StyleValue::Image(i) => names.image_ref(i),
+        StyleValue::Theme(_) => return None,
+    })
 }
 
 /// Values available to a template.
@@ -210,7 +212,7 @@ mod tests {
 
     #[test]
     fn formats_arrays() {
-        let names = NameTable::new(&Project::new("P"));
+        let names = Naming::new(&Project::new("P"));
         let def = PropDef::new("map", "Map", PropKind::StrArray { rows: true }, PropDefault::Text(""));
         let f = format_prop(&def, &PropValue::Text("1|2\n3".into()), "ui_M_map", &names);
         assert_eq!(f.prelude[0], r#"static const char * ui_M_map[] = {"1", "2", "\n", "3", ""};"#);

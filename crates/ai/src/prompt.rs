@@ -141,6 +141,19 @@ pub fn user_message(project: &Project, scope: Scope, request: &str) -> String {
         theme.secondary.label(),
         theme.secondary.main().to_hex_string()
     );
+    let themes = &project.color_themes;
+    if !themes.is_empty() {
+        let variables: Vec<String> = themes
+            .variables
+            .iter()
+            .map(|v| format!("{v} ({})", themes.value(v).map(|c| c.color.to_hex_string()).unwrap_or_default()))
+            .collect();
+        let _ = writeln!(
+            out,
+            "Theme colors: {}. Prefer them for colors: write `theme:<name>` as value of a color property and of its opa property, so the colors follow the active theme.",
+            variables.join(", ")
+        );
+    }
     let screens: Vec<&str> = project.screens.iter().map(|s| s.name.as_str()).collect();
     let _ = writeln!(out, "Existing screens: {}.", screens.join(", "));
     if !project.assets.fonts.is_empty() {

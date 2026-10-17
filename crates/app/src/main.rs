@@ -12,13 +12,14 @@ mod i18n;
 mod modal;
 mod panels;
 mod settings;
+mod simulator;
 mod visuals;
 mod widgets;
 
 use std::path::PathBuf;
 
 /// Command line:
-/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--panel <name>] [--screenshot out.png]`.
+/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--panel <name>] [--simulate] [--screenshot out.png]`.
 #[derive(Default)]
 pub struct LaunchOptions {
     pub file: Option<PathBuf>,
@@ -29,6 +30,8 @@ pub struct LaunchOptions {
     pub dialog: Option<String>,
     /// Brings a panel to the front (`assistant`, `style`, ...).
     pub panel: Option<String>,
+    /// Starts the simulation with the record overlay.
+    pub simulate: bool,
     /// Renders one frame into a PNG and exits (documentation, CI).
     pub screenshot: Option<PathBuf>,
 }
@@ -44,6 +47,8 @@ impl LaunchOptions {
                 options.panel = args.next().map(|s| s.to_string_lossy().into_owned());
             } else if arg == "--dialog" {
                 options.dialog = args.next().map(|s| s.to_string_lossy().into_owned());
+            } else if arg == "--simulate" {
+                options.simulate = true;
             } else if arg == "--select" {
                 options.select = args.next().map(|s| s.to_string_lossy().into_owned());
             } else {
