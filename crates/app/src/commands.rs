@@ -8,7 +8,7 @@ use lvglab_model::project::PROJECT_EXTENSION;
 use lvglab_model::{Project, WidgetId, WidgetKind};
 
 use crate::app::{Report, Studio};
-use crate::document::{Document, Timeline};
+use crate::document::{Document, EntryKind, Timeline};
 use crate::i18n::{tr, trf};
 use crate::modal::Tone;
 
@@ -82,7 +82,7 @@ impl Studio {
             }
             Command::ImportSquareLinePath(path) => self.import_squareline(path),
             Command::Save => match self.doc.path.clone() {
-                Some(path) => self.save_to(path),
+                Some(path) => self.save_to(path, EntryKind::Saved),
                 None => self.execute(Command::SaveAs, false),
             },
             Command::SaveAs => {
@@ -91,7 +91,7 @@ impl Studio {
                     .add_filter(tr("Studio project"), &[PROJECT_EXTENSION])
                     .set_file_name(format!("{}.{PROJECT_EXTENSION}", self.doc.project.name));
                 if let Some(path) = dialog.save_file() {
-                    self.save_to(path);
+                    self.save_to(path, EntryKind::Saved);
                 }
             }
             Command::ExportLibrary => self.export_library(),
@@ -190,7 +190,8 @@ impl Studio {
         }
     }
 
-    fn save_to(&mut self, path: PathBuf) {
+    /// Saves the project to `path` and marks the state in the timeline.
+    pub fn save_to(&mut self, path: PathBuf, kind: EntryKind) {
         // Images and fonts are copied into `assets/` next to the project file.
         let old_dir = self.doc.dir().map(Path::to_path_buf);
         let dir = path.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
@@ -202,6 +203,8 @@ impl Studio {
             Ok(()) => {
                 self.settings.add_recent(path.clone());
                 self.doc.mark_saved(path.clone());
+                let label = if kind == EntryKind::Autosaved { tr("Saved automatically") } else { tr("Saved") };
+                self.timeline.mark_save(&self.doc.project, kind, label);
                 self.notify(trf("Saved {}", &[&path.display()]));
                 if !missing.is_empty() {
                     self.report = Some(Report {

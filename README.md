@@ -58,7 +58,8 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - Freely dockable panels: Screens, Layers, Widgets, Parameters, Style, Events, Timeline, Fonts and Images.
   Snap them anywhere, stack them as tabs or float them as windows. The layout is remembered.
 - **Timeline**: every change becomes a named step. Click any step to jump back or forward
-  (Ctrl+Z / Ctrl+Y move one step).
+  (Ctrl+Z / Ctrl+Y move one step). Saves and autosaves appear as highlighted green steps.
+- **Autosave** of saved projects (default every 2 minutes, configurable).
 - Layers with drag & drop reordering and reparenting, visibility toggle, filtering and context menu.
 - Image assets (PNG/JPEG/BMP) and font assets (TTF/OTF) appear in the preview and are converted when
   you export.
@@ -156,7 +157,7 @@ Use the **View** menu to show hidden panels again or to reset the layout.
 |---|---|
 | General | Language, appearance (system/dark/light), UI scale (60–200 %), open the last project on start |
 | Canvas | Background (like the editor, dark, light, checkerboard), grid size, show grid, snap to grid, outline all widgets, dashed outlines for hidden widgets, name and size of the selection, Shift + arrow step |
-| Editing | Timeline length, automatic backup interval (writes `<name>.backup.lvglab` next to a saved project) |
+| Editing | Timeline length, autosave interval (default 2 min) and target: the project file itself or a backup copy `<name>.backup.lvglab` |
 | Export | Open the folder after exporting |
 
 You can also clear the recent files, reset the panel layout and reset all settings there.

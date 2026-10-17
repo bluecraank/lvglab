@@ -79,8 +79,10 @@ pub struct AppSettings {
     // Editing
     /// Maximum number of steps in the timeline.
     pub history_limit: usize,
-    /// Minutes between automatic backups (0 = off).
+    /// Minutes between automatic saves (0 = off).
     pub autosave_minutes: u32,
+    /// Autosave writes the project file itself; otherwise a backup copy.
+    pub autosave_project: bool,
     // Export
     pub open_export_folder: bool,
     // AI assistant
@@ -107,7 +109,8 @@ impl Default for AppSettings {
             show_size_label: true,
             nudge_large: 10,
             history_limit: 300,
-            autosave_minutes: 5,
+            autosave_minutes: 2,
+            autosave_project: true,
             open_export_folder: false,
             ai_api_key: String::new(),
             ai_model: lvglab_ai::MODELS[0].0.to_owned(),
