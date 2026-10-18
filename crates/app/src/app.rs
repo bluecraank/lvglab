@@ -118,7 +118,7 @@ impl Studio {
     pub fn stop_recording(&mut self) {
         let Some(recorder) = self.recorder.take() else { return };
         let name = format!("{}.gif", self.doc.project.name);
-        let dialog = rfd::FileDialog::new().add_filter("GIF", &["gif"]).set_file_name(name);
+        let dialog = crate::sandbox::FileDialog::new().add_filter("GIF", &["gif"]).set_file_name(name);
         if let Some(path) = dialog.save_file() {
             self.gif_jobs.push(recorder.finish(path));
             self.notify(tr("Writing the GIF…"));
@@ -154,7 +154,7 @@ impl Studio {
         };
     }
 
-    fn new(settings: AppSettings) -> Self {
+    pub(crate) fn new(settings: AppSettings) -> Self {
         let project = Project::new("MyProject");
         let screen = project.screens[0].id;
         Self {
@@ -780,6 +780,44 @@ impl StudioApp {
 
 impl eframe::App for StudioApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.run_frame(ctx);
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, STORAGE_KEY, &self.studio.settings);
+        eframe::set_value(storage, DOCK_KEY, &self.dock);
+    }
+}
+
+#[cfg(test)]
+impl StudioApp {
+    /// An editor without a window for the monkey test.
+    pub fn for_test(studio: Studio) -> Self {
+        Self {
+            studio,
+            dock: default_layout(),
+            screenshot: None,
+            frame: 0,
+            last_typing: 0.0,
+            close_confirmed: false,
+            show_close_confirm: false,
+            title: String::new(),
+            last_autosave: 0.0,
+        }
+    }
+
+    pub fn run_frame_for_test(&mut self, ctx: &egui::Context) {
+        self.run_frame(ctx);
+    }
+
+    pub fn studio(&self) -> &Studio {
+        &self.studio
+    }
+}
+
+impl StudioApp {
+    /// One frame of the editor; needs no window, so tests can drive it.
+    fn run_frame(&mut self, ctx: &egui::Context) {
         self.frame += 1;
         self.studio.anchors.clear();
         self.apply_settings(ctx);
@@ -840,11 +878,6 @@ impl eframe::App for StudioApp {
             self.title = title;
         }
         self.screenshot(ctx);
-    }
-
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, STORAGE_KEY, &self.studio.settings);
-        eframe::set_value(storage, DOCK_KEY, &self.dock);
     }
 }
 

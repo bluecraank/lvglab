@@ -2,7 +2,7 @@
 //! px / % / content, alignment relative to the parent's content area and
 //! flex layouts. Used by the editor preview and for hit testing.
 
-use crate::coord::{Align, Coord, Unit};
+use crate::coord::{Align, Coord, Unit, clamp_px};
 use crate::flags::{FlexAlign, ObjFlag, StateMask};
 use crate::style::StyleProp;
 use crate::theme::StyleResolver;
@@ -201,11 +201,11 @@ impl<'a> Engine<'_, 'a> {
     fn children_area(widget: &Widget, rect: Rect, content: Rect) -> Rect {
         match widget.kind {
             WidgetKind::Win => {
-                let header = widget.prop_int("header_height");
+                let header = clamp_px(widget.prop_int("header_height"));
                 Rect::new(rect.x, rect.y + header, rect.w, (rect.h - header).max(0))
             }
             WidgetKind::Tabview => {
-                let size = widget.prop_int("tab_size");
+                let size = clamp_px(widget.prop_int("tab_size"));
                 match widget.prop_text("tab_pos").as_str() {
                     "LV_DIR_BOTTOM" => Rect::new(rect.x, rect.y, rect.w, rect.h - size),
                     "LV_DIR_LEFT" => Rect::new(rect.x + size, rect.y, rect.w - size, rect.h),
@@ -263,10 +263,11 @@ impl<'a> Engine<'_, 'a> {
         let font = r.font(&path, "main", state);
         let letter = r.int(&path, "main", state, StyleProp::TextLetterSpace);
         let line_space = r.int(&path, "main", state, StyleProp::TextLineSpace);
-        let line_h = self.measure.line_height(&font);
+        let line_h = clamp_px(self.measure.line_height(&font));
         let text = |text: &str| {
             let max = fixed_width.map(|w| (w - ph).max(1));
-            self.measure.text_size(text, &font, letter, line_space, max)
+            let (w, h) = self.measure.text_size(text, &font, letter, line_space, max);
+            (clamp_px(w), clamp_px(h))
         };
         let (cw, ch) = match widget.kind {
             WidgetKind::Label => text(&widget.prop_text("text")),
@@ -285,10 +286,13 @@ impl<'a> Engine<'_, 'a> {
             WidgetKind::Roller => {
                 let options = widget.prop_text("options");
                 let width = options.lines().map(|l| text(l).0).max().unwrap_or(0);
-                let rows = widget.prop_int("visible_rows").max(1);
-                (width, rows * (line_h + line_space) - line_space)
+                let rows = i64::from(widget.prop_int("visible_rows").clamp(1, 1000));
+                (width, clamp_px(rows * i64::from(line_h + line_space) - i64::from(line_space)))
             }
-            WidgetKind::Image => self.measure.image_size(&widget.prop_text("src")).unwrap_or((50, 50)),
+            WidgetKind::Image => {
+                let (w, h) = self.measure.image_size(&widget.prop_text("src")).unwrap_or((50, 50));
+                (clamp_px(w), clamp_px(h))
+            }
             WidgetKind::AnimImg => {
                 let first = widget.prop_text("images").lines().next().unwrap_or_default().trim().to_owned();
                 self.measure.image_size(&first).unwrap_or((50, 50))
@@ -306,10 +310,13 @@ impl<'a> Engine<'_, 'a> {
                 let cols = cells.lines().map(|l| l.split('|').count()).max().unwrap_or(1) as i32;
                 let col_w = match widget.prop_int("col_width") {
                     0 => 130,
-                    w => w,
+                    w => clamp_px(w),
                 };
                 let (_, ipt, _, ipb) = r.padding(&path, "items", state);
-                (cols * col_w, rows * (line_h + ipt + ipb))
+                (
+                    clamp_px(i64::from(cols) * i64::from(col_w)),
+                    clamp_px(i64::from(rows) * i64::from(line_h + ipt + ipb)),
+                )
             }
             WidgetKind::Msgbox if r.theme.lvgl9 => {
                 // Header and footer are LV_DPI_DEF / 3 high; the content has small padding.
@@ -482,7 +489,8 @@ pub fn parse_points(text: &str) -> Vec<(i32, i32)> {
     text.split([' ', ';', '\n'])
         .filter_map(|pair| {
             let (x, y) = pair.trim().split_once(',')?;
-            Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+            let (x, y): (i32, i32) = (x.trim().parse().ok()?, y.trim().parse().ok()?);
+            Some((clamp_px(x), clamp_px(y)))
         })
         .collect()
 }
@@ -491,7 +499,7 @@ pub fn parse_points(text: &str) -> Vec<(i32, i32)> {
 /// that need pixel values (e.g. a canvas buffer).
 pub fn pixel_size(coord: Coord, fallback: i32) -> i32 {
     match coord.unit {
-        Unit::Px => coord.value,
+        Unit::Px => clamp_px(coord.value),
         _ => fallback,
     }
 }

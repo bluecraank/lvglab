@@ -104,8 +104,8 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     }
 }
 
-fn image_dialog() -> rfd::FileDialog {
-    rfd::FileDialog::new().add_filter(tr("Images"), &["png", "jpg", "jpeg", "bmp"])
+fn image_dialog() -> crate::sandbox::FileDialog {
+    crate::sandbox::FileDialog::new().add_filter(tr("Images"), &["png", "jpg", "jpeg", "bmp"])
 }
 
 fn add_images(studio: &mut Studio) {

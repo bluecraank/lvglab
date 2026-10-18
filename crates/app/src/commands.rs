@@ -188,8 +188,8 @@ impl Studio {
         }
     }
 
-    fn file_dialog(&self) -> rfd::FileDialog {
-        let dialog = rfd::FileDialog::new();
+    fn file_dialog(&self) -> crate::sandbox::FileDialog {
+        let dialog = crate::sandbox::FileDialog::new();
         match self.doc.dir() {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,
@@ -291,7 +291,7 @@ impl Studio {
         let project = &self.doc.project;
         let base = match self.doc.dir() {
             Some(dir) => Project::resolve_path(Some(dir), &project.export.directory),
-            None => match rfd::FileDialog::new().set_title(tr("Export folder")).pick_folder() {
+            None => match crate::sandbox::FileDialog::new().set_title(tr("Export folder")).pick_folder() {
                 Some(dir) => dir,
                 None => return,
             },
@@ -400,5 +400,7 @@ fn open_folder(path: &std::path::Path) {
         "xdg-open"
     };
     // The file manager is a convenience; failing to start it is not an error.
-    let _ = std::process::Command::new(program).arg(path).spawn();
+    if !crate::sandbox::active() {
+        let _ = std::process::Command::new(program).arg(path).spawn();
+    }
 }

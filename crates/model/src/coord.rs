@@ -3,6 +3,15 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// Largest coordinate the layout works with; LVGL 8 coordinates are 16 bit.
+pub const COORD_LIMIT: i32 = 32_767;
+
+/// Clamps a pixel value into `±COORD_LIMIT`, so sums and products of a few
+/// coordinates cannot overflow.
+pub fn clamp_px(value: impl Into<i64>) -> i32 {
+    value.into().clamp(-i64::from(COORD_LIMIT), i64::from(COORD_LIMIT)) as i32
+}
+
 /// Unit of a position or size value.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Unit {
@@ -47,13 +56,15 @@ impl Coord {
     }
 
     /// Resolves the coordinate against a reference length in pixels.
-    /// `content` must be supplied by the caller for [`Unit::Content`].
+    /// `content` must be supplied by the caller for [`Unit::Content`]. The
+    /// result stays within [`COORD_LIMIT`], whatever a project file holds.
     pub fn resolve(self, reference: i32, content: i32) -> i32 {
-        match self.unit {
-            Unit::Px => self.value,
-            Unit::Percent => reference * self.value / 100,
-            Unit::Content => content,
-        }
+        let px = match self.unit {
+            Unit::Px => i64::from(self.value),
+            Unit::Percent => i64::from(reference) * i64::from(self.value) / 100,
+            Unit::Content => i64::from(content),
+        };
+        clamp_px(px)
     }
 
     /// C expression for the value (`42`, `lv_pct(50)`, `LV_SIZE_CONTENT`).

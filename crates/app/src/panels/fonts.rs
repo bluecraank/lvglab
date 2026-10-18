@@ -115,8 +115,8 @@ fn font_usage(project: &Project) -> HashMap<String, usize> {
     usage
 }
 
-fn pick_font_file() -> rfd::FileDialog {
-    rfd::FileDialog::new().add_filter(tr("Fonts"), &["ttf", "otf"])
+fn pick_font_file() -> crate::sandbox::FileDialog {
+    crate::sandbox::FileDialog::new().add_filter(tr("Fonts"), &["ttf", "otf"])
 }
 
 fn add_fonts(studio: &mut Studio) {

@@ -333,7 +333,7 @@ impl<'a> StyleResolver<'a> {
     }
 
     pub fn int(&self, path: &[&Widget], slot: &str, state: StateMask, prop: StyleProp) -> i32 {
-        self.get(path, slot, state, prop).and_then(|v| v.as_int()).unwrap_or(0)
+        self.get(path, slot, state, prop).and_then(|v| v.as_int()).map_or(0, crate::coord::clamp_px)
     }
 
     pub fn coord(&self, path: &[&Widget], slot: &str, state: StateMask, prop: StyleProp) -> Option<Coord> {

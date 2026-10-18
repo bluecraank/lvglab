@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use lvglab_model::layout::parse_points;
 use lvglab_model::prop::{PropDef, PropKind, PropValue};
-use lvglab_model::style::StyleValue;
+use lvglab_model::style::{StyleKind, StyleValue};
 
 use crate::naming::Naming;
 
@@ -25,6 +25,53 @@ pub fn c_string(text: &str) -> String {
     }
     out.push('"');
     out
+}
+
+/// Text for a C comment: `*/` and line breaks would end the comment early.
+pub fn comment(text: &str) -> String {
+    text.replace("*/", "* /").replace(['\r', '\n'], " ")
+}
+
+/// True if `value` has the type `kind` expects and an enum value is one of
+/// its options. Other values (e.g. from an edited project file) must not
+/// reach the C code.
+pub fn prop_fits(kind: PropKind, value: &PropValue) -> bool {
+    match (kind, value) {
+        (PropKind::Bool, PropValue::Bool(_))
+        | (PropKind::Int { .. }, PropValue::Int(_))
+        | (PropKind::Color, PropValue::Color(_))
+        | (PropKind::Pair { .. }, PropValue::Pair(..))
+        | (PropKind::Image, PropValue::Image(_))
+        | (PropKind::WidgetRef, PropValue::WidgetRef(_))
+        | (PropKind::Date, PropValue::Date { .. }) => true,
+        (
+            PropKind::Text
+            | PropKind::Lines
+            | PropKind::Points
+            | PropKind::StrArray { .. }
+            | PropKind::ImageArray
+            | PropKind::ChartSeries,
+            PropValue::Text(_),
+        ) => true,
+        (PropKind::Enum(options), PropValue::Enum(v)) => options.iter().any(|o| o.c == v),
+        _ => false,
+    }
+}
+
+/// Like [`prop_fits`] for style values; theme variables fit colors and
+/// opacities.
+pub fn style_fits(kind: StyleKind, value: &StyleValue) -> bool {
+    match (kind, value) {
+        (StyleKind::Coord, StyleValue::Coord(_) | StyleValue::Int(_))
+        | (StyleKind::Int { .. } | StyleKind::Opa, StyleValue::Int(_))
+        | (StyleKind::Color, StyleValue::Color(_))
+        | (StyleKind::Color | StyleKind::Opa, StyleValue::Theme(_))
+        | (StyleKind::Bool, StyleValue::Bool(_))
+        | (StyleKind::Font, StyleValue::Font(_))
+        | (StyleKind::Image, StyleValue::Image(_)) => true,
+        (StyleKind::Enum(options), StyleValue::Enum(e)) => options.iter().any(|o| o.c == e),
+        _ => false,
+    }
 }
 
 /// A formatted value: the main expression, named fields (`.0`, `.len`, ...)

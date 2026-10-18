@@ -26,7 +26,7 @@ use lvglab_model::{Align, Coord, Project, Unit, Widget, WidgetId, WidgetKind};
 use crate::api::Target;
 use crate::naming::{Naming, c_ident};
 use crate::output::{GeneratedFile, MARKER, WritePolicy};
-use crate::template::{Formatted, Scope, c_string, format_prop, format_style, lines};
+use crate::template::{Formatted, Scope, c_string, comment, format_prop, format_style, lines, prop_fits, style_fits};
 
 /// Declarations contributed by asset conversion.
 #[derive(Default)]
@@ -48,7 +48,7 @@ pub struct UiSources {
 pub fn header(project: &Project) -> String {
     format!(
         "// {MARKER}. Do not edit: changes are overwritten on export.\n// Project: {} | LVGL {}\n",
-        project.name,
+        comment(&project.name),
         project.lvgl_version.suffix()
     )
 }
@@ -198,6 +198,11 @@ impl Templates {
     }
 }
 
+/// The value of a property, or its default if the stored value does not fit.
+fn prop_value(widget: &Widget, prop: &PropDef) -> PropValue {
+    widget.prop(prop.key).filter(|v| prop_fits(prop.kind, v)).unwrap_or_else(|| prop.default_value())
+}
+
 fn is_temporary(screen: &Widget) -> bool {
     screen.prop_bool("temporary")
 }
@@ -276,7 +281,7 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         root.walk(&mut |w| children.push((w.id, w.name.clone())));
 
         let mut body = Code::default();
-        body.line(&format!("/* Component: {name} */"));
+        body.line(&format!("/* Component: {} */", comment(&name)));
         for (index, (_, child)) in children.iter().enumerate() {
             body.line(&format!("#define {} {index}", names.component_child(&name, child)));
         }
@@ -371,7 +376,7 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         file.close();
 
         let mut body = Code::default();
-        body.line(&format!("/* Screen: {} */", screen.name));
+        body.line(&format!("/* Screen: {} */", comment(&screen.name)));
         body.line(&format!("void {screen_var}_screen_init(void);"));
         body.line(&format!("void {screen_var}_screen_destroy(void);"));
         body.line(&format!("void {screen_var}_screen_relocalize(void);"));
@@ -395,7 +400,7 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         }
 
         self.init.blank();
-        self.init.line(&format!("/* {}: {} */", def.name, widget.name));
+        self.init.line(&format!("/* {}: {} */", def.name, comment(&widget.name)));
         for prop in def.props.iter().filter(|p| templates.uses(p.key)) {
             for prelude in &scope.props[prop.key].prelude {
                 self.init.line(prelude);
@@ -460,7 +465,7 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
             .var("w", pixel_size(widget.geometry.width, 100).to_string())
             .var("h", pixel_size(widget.geometry.height, 100).to_string());
         for prop in def.props {
-            let value = widget.prop(prop.key).unwrap_or_else(|| prop.default_value());
+            let value = prop_value(widget, prop);
             let array = format!("{obj}_{}", prop.key);
             let mut formatted = format_prop(prop, &value, &array, self.ctx.names);
             if is_translated(self.ctx.project, widget, prop.key) {
@@ -497,7 +502,13 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
     }
 
     fn prop(&mut self, widget: &Widget, prop: &'static PropDef, scope: &Scope<'static>, obj: &str) {
-        let value = widget.prop(prop.key).unwrap_or_else(|| prop.default_value());
+        if let Some(value) = widget.prop(prop.key).filter(|v| !prop_fits(prop.kind, v)) {
+            self.ctx.warnings.push(format!(
+                "{}: invalid value {value:?} of {} was replaced by the default",
+                widget.name, prop.label
+            ));
+        }
+        let value = prop_value(widget, prop);
         let target = self.ctx.target;
         let (emit, when) = match widget.def().v9.prop(prop.key).filter(|_| target.is_v9()) {
             Some(v9) if v9.emit == Emit::None || !target.v9_since(v9.since) => {
@@ -684,6 +695,14 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
                         self.themed_style(widget, &target, &selector, *prop, variable);
                         continue;
                     }
+                    if !style_fits(prop.kind(), value) {
+                        self.ctx.warnings.push(format!(
+                            "{}: invalid value {value:?} of style {} was skipped",
+                            widget.name,
+                            prop.name()
+                        ));
+                        continue;
+                    }
                     if let Some(value) = format_style(value, names) {
                         self.init.line(&format!("lv_obj_set_style_{}({target}, {value}, {selector});", prop.name()));
                     }
@@ -822,7 +841,7 @@ fn ui_h(ctx: &Context<'_>, assets: &AssetDecls) -> String {
     if !assets.images.is_empty() {
         code.line("/* Images */");
         for (image, source) in &assets.images {
-            code.line(&format!("LV_IMG_DECLARE({image});    // {source}"));
+            code.line(&format!("LV_IMG_DECLARE({image});    // {}", comment(source)));
         }
         code.blank();
     }
