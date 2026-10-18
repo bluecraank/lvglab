@@ -704,7 +704,9 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
         tr("Run the UI: click buttons, switches and sliders, events are executed (F5)")
     };
     let button = egui::Button::new(egui::RichText::new(format!("{text} {label}")).color(color));
-    if ui.add(button).on_hover_text(hint).clicked() {
+    let response = ui.add(button).on_hover_text(hint);
+    studio.anchors.insert(crate::tour::Anchor::Simulate, response.rect);
+    if response.clicked() {
         studio.toggle_simulation();
     }
     let Some(sim) = &mut studio.simulation else { return };

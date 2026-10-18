@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::Studio;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Panel {
     Canvas,
     Screens,

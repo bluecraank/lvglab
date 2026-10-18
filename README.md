@@ -151,12 +151,14 @@ lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [
 | `project.lvglab` / `file.spj` | Opens a studio project, or imports a SquareLine project. |
 | `--select <widget>` | Selects a widget by name after opening. |
 | `--simulate` | Starts the simulator with the record overlay. |
-| `--dialog <name>` | Opens `new`, `preferences`, `about`, `discard` or `close` at start (documentation). |
+| `--dialog <name>` | Opens `new`, `preferences`, `about`, `discard`, `close` or the welcome tour (`tour`, `tour:<step>`) at start (documentation). |
 | `--screenshot <out.png>` | Renders the window into a PNG and exits (documentation, CI). |
 
 Try the bundled example: `cargo run --release -- examples/showcase/showcase.lvglab`
 
 ## Working with the editor
+
+On the first start a welcome tour explains the main areas in 15 steps; **Help → Welcome tour** repeats it.
 
 | Panel | Purpose |
 |---|---|
