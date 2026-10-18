@@ -358,8 +358,11 @@ impl StudioApp {
                     }
                 });
                 ui.separator();
+                // As small as the menu entries, so it fits into the menu bar.
                 let export = egui::Button::new(egui::RichText::new(tr("Export library")).color(egui::Color32::WHITE))
-                    .fill(visuals::ACCENT);
+                    .fill(visuals::ACCENT)
+                    .small()
+                    .corner_radius(4);
                 if ui.add(export).on_hover_text("Ctrl+E").clicked() {
                     self.studio.push(Command::ExportLibrary);
                 }

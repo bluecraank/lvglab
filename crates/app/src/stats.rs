@@ -101,6 +101,11 @@ pub fn compute(project: &Project, dir: Option<&Path>, screen: WidgetId, cache: &
 /// Objects, local style properties and text bytes of a tree (component
 /// instances count with their component).
 fn count(root: &Widget, project: &Project) -> (usize, usize, usize) {
+    count_at(root, project, 0)
+}
+
+/// `depth` stops components that contain instances of themselves.
+fn count_at(root: &Widget, project: &Project, depth: usize) -> (usize, usize, usize) {
     let mut objects = 0;
     let mut styles = 0;
     let mut text = 0;
@@ -108,9 +113,9 @@ fn count(root: &Widget, project: &Project) -> (usize, usize, usize) {
         objects += 1;
         styles += w.styles.blocks().map(|b| b.props.len()).sum::<usize>();
         text += w.prop_text("text").len();
-        if w.kind == WidgetKind::Component {
+        if w.kind == WidgetKind::Component && depth < 8 {
             if let Some(component) = project.component(&w.prop_text("component")) {
-                let (o, s, t) = count(component, project);
+                let (o, s, t) = count_at(component, project, depth + 1);
                 objects += o.saturating_sub(2);
                 styles += s;
                 text += t;

@@ -69,6 +69,7 @@
   "Animation": "Animation",
   "Animation speed": "Vitesse d'animation",
   "Animation time (ms)": "Durée de l'animation (ms)",
+  "Another component has this name.": "Un autre composant porte ce nom.",
   "Anthropic API key. Stored in the editor settings on this computer.": "Clé d'API Anthropic. Enregistrée dans les réglages de l'éditeur sur cet ordinateur.",
   "Anti-aliasing": "Anticrénelage",
   "Appearance": "Apparence",

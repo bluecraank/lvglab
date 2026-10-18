@@ -52,6 +52,10 @@ impl Recorder {
     pub fn request(&mut self, ctx: &egui::Context, now: f64, crop: Rect, size: (u32, u32)) {
         self.crop = crop;
         self.size = size;
+        // A screenshot that never arrives must not stop the recording.
+        if self.pending && now - self.last_request > 1.0 {
+            self.pending = false;
+        }
         if !self.pending && now - self.last_request >= 1.0 / FPS {
             self.pending = true;
             self.last_request = now;
