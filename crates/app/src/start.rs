@@ -231,7 +231,8 @@ mod tests {
     use eframe::egui::{Event, PointerButton, RawInput, pos2};
 
     fn entries() -> Vec<Entry> {
-        let info = |name: &str| Info { name: name.into(), width: 466, height: 466, round: true, version: "9.6.0", screens: 2 };
+        let info =
+            |name: &str| Info { name: name.into(), width: 466, height: 466, round: true, version: "9.6.0", screens: 2 };
         vec![Entry { path: "a.lvglab".into(), info: Some(info("Dashboard")), modified: None }]
     }
 
