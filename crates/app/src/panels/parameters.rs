@@ -25,6 +25,10 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let project = &studio.doc.project;
 
     identity(ui, project, &mut widget);
+    if project.is_component(widget.id) && project.components.iter().any(|c| c.id != widget.id && c.name == widget.name)
+    {
+        ui.colored_label(visuals::WARNING, tr("Another component has this name."));
+    }
     if let Some(missing) = lvglab_codegen::glyphs::missing_glyphs_of(project, widget.id) {
         let chars: String = missing.chars.iter().collect();
         ui.colored_label(

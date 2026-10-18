@@ -124,7 +124,13 @@ pub fn generate(project: &Project, assets: &AssetDecls) -> UiSources {
     files.push(text(names.file("themes.h"), themes_h(project, &names)));
     files.push(text(names.file("themes.c"), themes_c(project, &names)));
     if !project.components.is_empty() {
+        let mut exported = BTreeSet::new();
         for component in &project.components {
+            if !exported.insert(names.component_create(&component.name)) {
+                ctx.warnings
+                    .push(format!("component name {} is used twice; the second component was skipped", component.name));
+                continue;
+            }
             let generated = ScreenGen::new(&mut ctx, component).component();
             if generated.source.is_empty() {
                 continue;
@@ -361,6 +367,14 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         }
         if self.local {
             self.init.line(&format!("lv_obj_t * {obj};"));
+        }
+        if widget.kind == WidgetKind::Component {
+            let name = widget.prop_text("component");
+            if self.ctx.project.component(&name).is_none_or(|c| c.children.is_empty()) {
+                self.ctx
+                    .warnings
+                    .push(format!("{}: component `{name}` does not exist; an empty object is created", widget.name));
+            }
         }
         self.init.line(&format!("{obj} = {};", scope.expand(def.create)));
         if !def.post_create.is_empty() {

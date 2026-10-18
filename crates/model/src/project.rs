@@ -420,6 +420,15 @@ impl Project {
         out
     }
 
+    /// Widgets of all screens and of all component definitions.
+    pub fn every_widget(&self) -> Vec<&Widget> {
+        let mut out = Vec::new();
+        for root in self.roots() {
+            root.walk(&mut |w| out.push(w));
+        }
+        out
+    }
+
     /// True if any widget other than `except` already uses `name`.
     pub fn name_in_use(&self, name: &str, except: Option<WidgetId>) -> bool {
         self.all_widgets().iter().any(|w| w.name == name && Some(w.id) != except)

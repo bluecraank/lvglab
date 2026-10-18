@@ -212,8 +212,8 @@ impl Timeline {
 
 /// A short human readable description of what changed between two states.
 pub fn describe_change(old: &Project, new: &Project) -> String {
-    let old_widgets = old.all_widgets();
-    let new_widgets = new.all_widgets();
+    let old_widgets = old.every_widget();
+    let new_widgets = new.every_widget();
     if new_widgets.len() > old_widgets.len() {
         let added = new_widgets.iter().find(|w| old.widget(w.id).is_none());
         return format!("{} {}", tr("Added"), added.map_or("", |w| w.name.as_str()));
