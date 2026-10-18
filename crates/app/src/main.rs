@@ -33,7 +33,7 @@ pub struct LaunchOptions {
     pub file: Option<PathBuf>,
     /// Name of a widget to select after opening.
     pub select: Option<String>,
-    /// Opens a dialog at start (`start`, `preferences`, `about`, `new`, `tour`, `tour:<step>`, `merge:<file>`, `merge-conflicts:<file>`, `discard`, `close`);
+    /// Opens a dialog at start (`start`, `overview`, `preferences`, `about`, `new`, `tour`, `tour:<step>`, `merge:<file>`, `merge-conflicts:<file>`, `discard`, `close`);
     /// used for documentation screenshots.
     pub dialog: Option<String>,
     /// Brings a panel to the front (`assistant`, `style`, ...).
