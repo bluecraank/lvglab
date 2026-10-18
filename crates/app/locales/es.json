@@ -297,6 +297,8 @@
   "Grey": "Gris",
   "Grid": "Cuadrícula",
   "Grid size": "Tamaño de la cuadrícula",
+  "Group them": "Agrupar",
+  "Grouped the objects of the component into one container.": "Los objetos del componente se agruparon en un contenedor.",
   "Grow": "Crecer",
   "Guides": "Guías",
   "Header": "Cabecera",
@@ -530,6 +532,7 @@
   "Project settings…": "Ajustes del proyecto…",
   "Projects": "Proyectos",
   "Purple": "Púrpura",
+  "Put all objects into one container": "Poner todos los objetos en un contenedor",
   "Quit": "Salir",
   "Quit without saving": "Salir sin guardar",
   "RAM ~{} · Flash ~{} · {} / {} widgets": "RAM ~{} · Flash ~{} · {} / {} widgets",
@@ -861,5 +864,6 @@
   "{}: style {} removed": "{}: estilo {} eliminado",
   "{}: styles of the part {} removed": "{}: estilos de la parte {} eliminados",
   "{}: widget removed ({})": "{}: widget eliminado ({})",
-  "{}: {} reset": "{}: {} restablecido"
+  "{}: {} reset": "{}: {} restablecido",
+  "⚠ {} objects on the top level; an instance uses only the first.": "⚠ {} objetos en el nivel superior; una instancia solo usa el primero."
 }

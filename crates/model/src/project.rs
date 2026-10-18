@@ -350,6 +350,26 @@ impl Project {
         self.components.iter().find(|c| c.name == name)
     }
 
+    /// Puts all top level objects of a component into one container, because
+    /// an instance is made of a single object. The container has the size of
+    /// the display and does not move the objects; resize it as needed.
+    pub fn group_component_roots(&mut self, id: WidgetId) -> bool {
+        let Some(index) = self.components.iter().position(|c| c.id == id) else { return false };
+        if self.components[index].children.len() < 2 {
+            return false;
+        }
+        let name = self.unique_name(&format!("{}Content", self.components[index].name));
+        let mut group = Widget::new(WidgetKind::Container, self.alloc_id(), name);
+        group.geometry.align = crate::coord::Align::TopLeft;
+        group.geometry.width = crate::coord::Coord::px(self.display.width as i32);
+        group.geometry.height = crate::coord::Coord::px(self.display.height as i32);
+        group.set_flag(crate::flags::ObjFlag::Clickable, false);
+        group.set_flag(crate::flags::ObjFlag::Scrollable, false);
+        group.children = std::mem::take(&mut self.components[index].children);
+        self.components[index].children = vec![group];
+        true
+    }
+
     /// Points the instances of component `old` to `new` after a rename.
     pub fn rename_component_instances(&mut self, old: &str, new: &str) {
         for screen in self.roots_mut() {
@@ -791,6 +811,25 @@ fn same_contents(a: &Path, b: &Path) -> bool {
 mod tests {
     use super::*;
     use crate::event::{Action, EventHandler, EventTrigger, ScreenAnim};
+
+    #[test]
+    fn grouping_puts_the_top_level_objects_of_a_component_into_one_container() {
+        let mut p = Project::new("P");
+        p.display.width = 600;
+        p.display.height = 450;
+        let component = p.add_component();
+        let panel = p.new_widget(WidgetKind::Panel);
+        let panel_id = panel.id;
+        p.insert(component, usize::MAX, panel).unwrap();
+        assert_eq!(p.components[0].children.len(), 2);
+        assert!(p.group_component_roots(component));
+        let root = &p.components[0].children;
+        assert_eq!(root.len(), 1);
+        assert_eq!((root[0].kind, root[0].children.len()), (WidgetKind::Container, 2));
+        assert_eq!((root[0].geometry.width.value, root[0].geometry.height.value), (600, 450));
+        assert!(p.widget(panel_id).is_some(), "the objects keep their ids");
+        assert!(!p.group_component_roots(component), "a single object is left alone");
+    }
 
     #[test]
     fn lvgl_versions() {
