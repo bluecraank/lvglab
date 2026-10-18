@@ -496,6 +496,9 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         }
         if !matches!(g.align, Align::TopLeft | Align::Default) {
             self.init.line(&format!("lv_obj_set_align({obj}, {});", g.align.c_const()));
+        } else if widget.kind == WidgetKind::Component {
+            // The root of the component has its own alignment; an instance replaces it.
+            self.init.line(&format!("lv_obj_set_align({obj}, {});", Align::TopLeft.c_const()));
         }
     }
 

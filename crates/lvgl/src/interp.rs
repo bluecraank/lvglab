@@ -347,6 +347,11 @@ impl Interpreter {
         Some(function(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
     }
 
+    /// Makes `&name` resolve to a static image descriptor.
+    pub fn add_symbol(&mut self, name: &str, address: usize) {
+        self.symbols.insert(name.to_owned(), address);
+    }
+
     pub fn has_function(&self, name: &str) -> bool {
         self.functions.contains_key(name)
     }
