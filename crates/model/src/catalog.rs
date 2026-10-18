@@ -1162,6 +1162,7 @@ const TABVIEW: WidgetDef = WidgetDef {
         post_create: Some(
             "lv_tabview_set_tab_bar_position({obj}, {tab_pos});\nlv_tabview_set_tab_bar_size({obj}, {tab_size});",
         ),
+        post_props: Some("lv_tabview_set_active({obj}, {active_tab}, LV_ANIM_OFF);"),
         ..V9::SAME
     },
     ..BASE
