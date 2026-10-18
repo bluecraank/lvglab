@@ -42,3 +42,20 @@ jobs:
           for f in $(find out/ui/src -name '*.c'); do
             gcc -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only -DLV_CONF_INCLUDE_SIMPLE -I. -Ilvgl -Iout/ui/src "$f"
           done
+
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p lvglab
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}", "$env:ProgramFiles" -Filter ISCC.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          & $iscc.FullName /Q /DAppVersion=0.0.0 installer\lvglab.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Get-ChildItem dist

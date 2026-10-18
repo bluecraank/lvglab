@@ -107,6 +107,15 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 ## Getting started
 
+### Download
+
+Ready-made builds are on the [releases page](https://github.com/bluecraank/lvglab/releases):
+
+- **Windows:** `LVGLab-<version>-windows-x64-setup.exe` installs LVGLab with a Start menu entry, an optional
+  desktop icon and the `.lvglab` file association (for all users, or for the current user without
+  administrator rights). It can be removed under *Settings → Apps*. The `.zip` is a portable version.
+- **Linux / macOS:** unpack the `.tar.gz` and start `lvglab`.
+
 ### Build from source
 
 Requirements: [Rust](https://rustup.rs) 1.85 or newer.
@@ -438,6 +447,10 @@ Design principles:
 - **No `unsafe`**: the workspace forbids it.
 
 ## Development
+
+The Windows installer is built with [Inno Setup](https://jrsoftware.org/isinfo.php) from
+[`installer/lvglab.iss`](installer/lvglab.iss):
+`iscc /DAppVersion=0.3.1 /DSourceDir=..\target\release installer\lvglab.iss` writes it to `dist/`.
 
 ```sh
 cargo test --workspace                         # unit tests of all crates
