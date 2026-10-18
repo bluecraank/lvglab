@@ -80,13 +80,19 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
   Snap them anywhere, stack them as tabs or float them as windows. The layout is remembered.
 - **Timeline**: every change becomes a named step. Click any step to jump back or forward
   (Ctrl+Z / Ctrl+Y move one step). Saves and autosaves appear as highlighted green steps.
+  **This screen only** lists just the steps that changed the current screen; a click restores that screen from
+  the step and leaves all other screens as they are (one new step, so it can be undone).
+- **Search** (Ctrl+F, Edit → Find…): finds widgets by name or type and also property values, local styles
+  (colors, fonts, images, theme colors), events and flags on all screens and components. Several words
+  narrow the result (`label title`, `F15C00`, `on_go`). Arrow keys and Enter or a click open the hit.
 - **Autosave** of saved projects (default every 2 minutes, configurable).
 - Layers with drag & drop reordering and reparenting, visibility toggle, filtering and context menu.
 - Image assets (PNG/JPEG/BMP) and font assets (TTF/OTF) appear in the preview and are converted when
   you export.
 - **Simulator** (F5): play the UI on the canvas. Buttons show their pressed style, switches and check
   boxes toggle, sliders and arcs follow the mouse, and the project's events run (screen changes, flags,
-  states, texts, values) with their screen load animations. The **Record** mode draws the pointer and every
+  states, texts, values) with their screen load animations. Taps on a tab button switch the page of a tab
+  view, dragging scrolls a roller, and a keyboard types into its text area. The **Record** mode draws the pointer and every
   click for screen recordings, **⏺ GIF** records the display as an animated GIF, and **Live data** moves gauges
   and numeric labels (or shows their widest values).
 - **Components**: reusable widget groups, edited like a screen and placed with the *Component* widget.
@@ -202,7 +208,7 @@ On the first start a welcome tour explains the main areas in 15 steps; **Help �
 | **Themes** | LVGL's default theme (dark or light, primary and secondary color) and the color themes. |
 | **Style** | Local styles per part and state. While a state is selected, the canvas previews the widget in that state. |
 | **Events** | Trigger → action list of the selected widget. |
-| **Timeline** | History of all changes. Click a step to jump there. |
+| **Timeline** | History of all changes. Click a step to jump there; *This screen only* restores a single screen. |
 | **Fonts / Images** | Assets of the project. They are converted on export. |
 
 Use the **View** menu to show hidden panels again or to reset the layout.
@@ -225,6 +231,7 @@ Keyboard shortcuts:
 | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S | New, open, save, save as |
 | Ctrl+I | Import SquareLine project |
 | Ctrl+E | Export library |
+| Ctrl+F | Search widgets, properties and styles |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Step back / forward in the timeline |
 | Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+D | Copy, cut, paste, duplicate |
 | Del | Delete selection |

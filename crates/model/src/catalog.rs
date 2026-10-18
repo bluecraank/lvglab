@@ -1153,7 +1153,9 @@ const TABVIEW: WidgetDef = WidgetDef {
     props: &[
         PropDef::new("tab_pos", "Tab position", K::Enum(LIST_DIRS), D::Enum("LV_DIR_TOP")).sl(&["Tab_position"]),
         PropDef::new("tab_size", "Tab bar size", K::Int { min: 10, max: 500 }, D::Int(50)),
+        PropDef::new("active_tab", "Active tab", K::Int { min: 0, max: 50 }, D::Int(0)),
     ],
+    post_props: "lv_tabview_set_act({obj}, {active_tab}, LV_ANIM_OFF);",
     squareline: &["TABVIEW"],
     v9: V9 {
         create: Some("lv_tabview_create({parent})"),

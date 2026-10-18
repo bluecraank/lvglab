@@ -27,6 +27,8 @@ const LONG_PRESS_S: f64 = 0.4;
 const GESTURE_PX: i32 = 40;
 /// How long a click ripple stays visible.
 const RIPPLE_S: f64 = 0.5;
+/// Height of a roller row in display pixels that one step of a drag covers.
+const ROLLER_ROW_PX: i32 = 28;
 const LOG_SIZE: usize = 6;
 
 struct Press {
@@ -39,6 +41,9 @@ struct Press {
     long_fired: bool,
     /// The press changes a slider or arc value instead of clicking.
     adjusts_value: bool,
+    /// The press scrolls a roller; `start_value` is its selection at the start.
+    scrolls: bool,
+    start_value: i32,
 }
 
 struct ScheduledScreen {
@@ -258,18 +263,79 @@ impl Simulation {
         if self.transition.is_some() {
             return;
         }
+        if self.press_tab(nodes, x, y, now) {
+            return;
+        }
         let Some((id, rect, content)) = self.target(nodes, x, y) else { return };
         let kind = self.project.widget(id).map(|w| w.kind);
         let adjusts_value = matches!(kind, Some(WidgetKind::Slider | WidgetKind::Arc));
-        self.press = Some(Press { id, rect, content, start: (x, y), time: now, long_fired: false, adjusts_value });
+        let scrolls = kind == Some(WidgetKind::Roller);
+        let start_value = self.project.widget(id).map_or(0, |w| w.prop_int("selected"));
+        self.press = Some(Press {
+            id,
+            rect,
+            content,
+            start: (x, y),
+            time: now,
+            long_fired: false,
+            adjusts_value,
+            scrolls,
+            start_value,
+        });
         self.fire(id, EventTrigger::Pressed, now);
         if adjusts_value {
             self.adjust_value(id, rect, x, y, now);
         }
     }
 
+    /// A tap on a tab button of a tab view activates that tab.
+    fn press_tab(&mut self, nodes: &[NodeInfo], x: i32, y: i32, now: f64) -> bool {
+        let Some(node) = nodes.iter().rfind(|n| {
+            !n.hidden
+                && n.rect.contains(x, y)
+                && n.clip.contains(x, y)
+                && self.project.widget(n.id).is_some_and(|w| w.kind == WidgetKind::Tabview)
+        }) else {
+            return false;
+        };
+        let (id, rect) = (node.id, node.rect);
+        let Some(widget) = self.project.widget(id) else { return false };
+        let size = widget.prop_int("tab_size");
+        let count = widget.children.len() as i32;
+        let (bar_x, bar_y, bar_w, bar_h, vertical) = match widget.prop_text("tab_pos").as_str() {
+            "LV_DIR_BOTTOM" => (rect.x, rect.bottom() - size, rect.w, size, false),
+            "LV_DIR_LEFT" => (rect.x, rect.y, size, rect.h, true),
+            "LV_DIR_RIGHT" => (rect.x + rect.w - size, rect.y, size, rect.h, true),
+            _ => (rect.x, rect.y, rect.w, size, false),
+        };
+        if count == 0 || x < bar_x || y < bar_y || x >= bar_x + bar_w || y >= bar_y + bar_h {
+            return false;
+        }
+        let tab = if vertical { (y - bar_y) * count / bar_h.max(1) } else { (x - bar_x) * count / bar_w.max(1) };
+        let tab = tab.clamp(0, count - 1);
+        if widget.prop_int("active_tab") != tab {
+            if let Some(widget) = self.project.widget_mut(id) {
+                widget.set_prop("active_tab", PropValue::Int(tab));
+            }
+            self.fire(id, EventTrigger::ValueChanged, now);
+        }
+        true
+    }
+
     pub fn drag(&mut self, x: i32, y: i32, now: f64) {
         let Some(press) = &self.press else { return };
+        if press.scrolls {
+            let (id, dy, start) = (press.id, y - press.start.1, press.start_value);
+            let Some(widget) = self.project.widget_mut(id) else { return };
+            let count = widget.prop_text("options").lines().count().max(1) as i32;
+            // Dragging up moves to later options.
+            let selected = (start - dy / ROLLER_ROW_PX).clamp(0, count - 1);
+            if widget.prop_int("selected") != selected {
+                widget.set_prop("selected", PropValue::Int(selected));
+                self.fire(id, EventTrigger::ValueChanged, now);
+            }
+            return;
+        }
         if press.adjusts_value {
             let (id, rect) = (press.id, press.rect);
             self.adjust_value(id, rect, x, y, now);
@@ -291,7 +357,7 @@ impl Simulation {
         let id = press.id;
         self.fire(id, EventTrigger::Released, now);
         let (dx, dy) = (x - press.start.0, y - press.start.1);
-        if !press.adjusts_value && (dx.abs() >= GESTURE_PX || dy.abs() >= GESTURE_PX) {
+        if !press.adjusts_value && !press.scrolls && (dx.abs() >= GESTURE_PX || dy.abs() >= GESTURE_PX) {
             let gesture = if dx.abs() > dy.abs() {
                 if dx > 0 { EventTrigger::GestureRight } else { EventTrigger::GestureLeft }
             } else if dy > 0 {
@@ -310,7 +376,7 @@ impl Simulation {
             self.fire(id, EventTrigger::PressLost, now);
             return;
         }
-        if press.adjusts_value {
+        if press.adjusts_value || (press.scrolls && dy.abs() >= GESTURE_PX / 8) {
             return;
         }
         self.click(id, now);
@@ -674,5 +740,56 @@ mod tests {
         sim.drag(150, 105, 0.1);
         sim.release(150, 105, Pos2::ZERO, 0.2);
         assert_eq!(sim.project.widget(id).unwrap().prop_int("value"), 75);
+    }
+
+    #[test]
+    fn tapping_a_tab_activates_it_and_dragging_scrolls_a_roller() {
+        let mut project = Project::new("Sim");
+        let screen = project.screens[0].id;
+        let mut tabs = project.new_widget(WidgetKind::Tabview);
+        for title in ["A", "B", "C"] {
+            let mut page = project.new_widget(WidgetKind::TabPage);
+            page.set_prop("title", PropValue::Text(title.into()));
+            tabs.children.push(page);
+        }
+        let tabs_id = tabs.id;
+        project.insert(screen, 0, tabs).unwrap();
+        let mut roller = project.new_widget(WidgetKind::Roller);
+        roller.set_prop(
+            "options",
+            PropValue::Text(
+                "a
+b
+c
+d
+e"
+                .into(),
+            ),
+        );
+        let roller_id = roller.id;
+        project.insert(screen, 1, roller).unwrap();
+        let nodes = vec![
+            node(screen, WidgetKind::Screen, lay::Rect::new(0, 0, 480, 320)),
+            node(tabs_id, WidgetKind::Tabview, lay::Rect::new(0, 0, 300, 200)),
+            node(roller_id, WidgetKind::Roller, lay::Rect::new(320, 0, 100, 120)),
+        ];
+        let mut sim = Simulation::new(&project, screen);
+        let active = |sim: &Simulation| sim.project.widget(tabs_id).unwrap().prop_int("active_tab");
+        sim.press(&nodes, 250, 20, 0.0);
+        sim.release(250, 20, Pos2::ZERO, 0.05);
+        assert_eq!(active(&sim), 2, "the third of three tab buttons");
+        sim.press(&nodes, 150, 100, 1.0);
+        sim.release(150, 100, Pos2::ZERO, 1.05);
+        assert_eq!(active(&sim), 2, "the page area is not a tab button");
+        let selected = |sim: &Simulation| sim.project.widget(roller_id).unwrap().prop_int("selected");
+        sim.press(&nodes, 350, 60, 2.0);
+        sim.drag(350, 60 - 2 * ROLLER_ROW_PX, 2.1);
+        sim.release(350, 60 - 2 * ROLLER_ROW_PX, Pos2::ZERO, 2.2);
+        assert_eq!(selected(&sim), 2, "dragging up by two rows");
+        sim.press(&nodes, 350, 60, 3.0);
+        sim.drag(350, 60 + 10 * ROLLER_ROW_PX, 3.1);
+        sim.release(350, 60 + 10 * ROLLER_ROW_PX, Pos2::ZERO, 3.2);
+        assert_eq!(selected(&sim), 0, "stops at the first option");
+        assert_eq!(project.widget(tabs_id).unwrap().prop_int("active_tab"), 0, "document untouched");
     }
 }

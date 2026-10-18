@@ -331,6 +331,19 @@ impl Project {
         self.roots_mut().find_map(|s| s.find_mut(id))
     }
 
+    /// Replaces the screen or component `id` with its state in `from`.
+    /// Returns false if either side does not have it.
+    pub fn restore_root(&mut self, from: &Project, id: WidgetId) -> bool {
+        let Some(source) = from.roots().find(|r| r.id == id).cloned() else { return false };
+        match self.roots_mut().find(|r| r.id == id) {
+            Some(root) => {
+                *root = source;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// The screen (or component) containing `id`.
     pub fn screen_of(&self, id: WidgetId) -> Option<&Widget> {
         self.roots().find(|s| s.find(id).is_some())
@@ -860,6 +873,20 @@ fn same_contents(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restoring_a_screen_leaves_the_others_alone() {
+        let mut p = Project::new("P");
+        let first = p.screens[0].id;
+        let second = p.add_screen();
+        let old = p.clone();
+        p.widget_mut(first).unwrap().name = "Changed".into();
+        p.widget_mut(second).unwrap().name = "Also changed".into();
+        assert!(p.restore_root(&old, first));
+        assert_eq!(p.widget(first), old.widget(first));
+        assert_eq!(p.widget(second).unwrap().name, "Also changed");
+        assert!(!p.restore_root(&old, WidgetId(u64::MAX)));
+    }
     use crate::event::{Action, EventHandler, EventTrigger, ScreenAnim};
 
     #[test]
