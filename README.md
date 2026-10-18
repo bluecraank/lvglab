@@ -504,7 +504,7 @@ Design principles:
 
 The Windows installer is built with [Inno Setup](https://jrsoftware.org/isinfo.php) from
 [`installer/lvglab.iss`](installer/lvglab.iss):
-`iscc /DAppVersion=0.7.0 /DSourceDir=..\target\release installer\lvglab.iss` writes it to `dist/`.
+`iscc /DAppVersion=0.8.0 /DSourceDir=..\target\release installer\lvglab.iss` writes it to `dist/`.
 
 ```sh
 cargo test --workspace                         # unit tests of all crates
