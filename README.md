@@ -53,7 +53,8 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
   round display masking, zoom, pan, grid and snapping.
-- Click to select. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
+- Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
+- Align and distribute the selection (or one widget in its parent); snap lines to the edges and centers of neighbors.
   Drag widgets from the palette onto the canvas.
 - Freely dockable panels: Screens, Layers, Widgets, Parameters, Style, Events, Timeline, Fonts and Images.
   Snap them anywhere, stack them as tabs or float them as windows. The layout is remembered.
@@ -65,7 +66,9 @@ ready-to-use library for PlatformIO or the Arduino IDE.
   you export.
 - **Simulator** (F5): play the UI on the canvas. Buttons show their pressed style, switches and check
   boxes toggle, sliders and arcs follow the mouse, and the project's events run (screen changes, flags,
-  states, texts, values). The **Record** mode draws the pointer and every click for screen recordings.
+  states, texts, values) with their screen load animations. The **Record** mode draws the pointer and every
+  click for screen recordings, **⏺ GIF** records the display as an animated GIF, and **Live data** moves gauges
+  and numeric labels (or shows their widest values).
 - **Components**: reusable widget groups, edited like a screen and placed with the *Component* widget.
   Exported like SquareLine (`ui_<Name>_create()`, `ui_comp_get_child()`, `UI_COMP_<NAME>_<CHILD>`, create hooks).
 - **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound

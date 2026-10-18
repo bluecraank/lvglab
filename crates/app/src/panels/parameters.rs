@@ -25,6 +25,14 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let project = &studio.doc.project;
 
     identity(ui, project, &mut widget);
+    if let Some(missing) = lvglab_codegen::glyphs::missing_glyphs_of(project, widget.id) {
+        let chars: String = missing.chars.iter().collect();
+        ui.colored_label(
+            visuals::WARNING,
+            crate::i18n::trf("Font {} has no glyphs for: {}", &[&missing.font, &chars]),
+        )
+        .on_hover_text(tr("These characters are not drawn on the device. Add them to the font's ranges or symbols in the Fonts panel."));
+    }
     if widget.kind != WidgetKind::Screen && !widget.def().managed_geometry {
         section(ui, "geometry", tr("Position & size"), true, |ui| geometry(ui, &mut widget));
     }
