@@ -101,12 +101,14 @@ fn elide(text: &str, max: usize) -> String {
     }
 }
 
-fn ago(time: SystemTime) -> String {
+/// "now", "5 min ago", "3 h ago", "2 d ago".
+pub fn ago(time: SystemTime) -> String {
     let seconds = time.elapsed().map_or(0, |d| d.as_secs());
     match seconds {
         0..=9 => tr("now").to_owned(),
         10..=59 => trf("{} s ago", &[&seconds]),
         60..=3599 => trf("{} min ago", &[&(seconds / 60)]),
-        _ => trf("{} h ago", &[&(seconds / 3600)]),
+        3600..=172_799 => trf("{} h ago", &[&(seconds / 3600)]),
+        _ => trf("{} d ago", &[&(seconds / 86_400)]),
     }
 }

@@ -51,6 +51,10 @@ pub struct Studio {
     pub new_project: Option<crate::commands::NewProject>,
     /// Current step of the welcome tour.
     pub tour: Option<usize>,
+    /// The tour starts once the start page and the dialogs are closed.
+    pub tour_pending: bool,
+    /// The open start page with the recent projects.
+    pub start_page: Option<Vec<crate::start::Entry>>,
     /// Where the areas the tour points at were drawn this frame.
     pub anchors: crate::tour::Anchors,
     pub settings: AppSettings,
@@ -168,6 +172,8 @@ impl Studio {
             confirm_discard: None,
             new_project: None,
             tour: None,
+            tour_pending: false,
+            start_page: None,
             anchors: crate::tour::Anchors::new(),
             settings,
             assets: AssetCache::default(),
@@ -323,8 +329,14 @@ impl StudioApp {
         }
         let reopen = settings.reopen_last.then(|| settings.recent.first().cloned()).flatten().filter(|p| p.exists());
         let mut studio = Studio::new(settings);
-        if let Some(file) = options.file.or(reopen) {
-            studio.execute(Command::OpenPath(file), true);
+        let dialog = options.dialog.as_deref();
+        match options.file.clone().or(reopen) {
+            Some(file) => studio.execute(Command::OpenPath(file), true),
+            // Without a project the editor starts with the start page.
+            None if (dialog.is_none() && options.screenshot.is_none()) || dialog == Some("start") => {
+                studio.start_page = Some(crate::start::entries(&studio.settings.recent));
+            }
+            None => {}
         }
         if let Some(name) = options.select {
             let id = studio.doc.project.all_widgets().iter().find(|w| w.name == name).map(|w| w.id);
@@ -337,7 +349,6 @@ impl StudioApp {
                 sim.record = true;
             }
         }
-        let dialog = options.dialog.as_deref();
         studio.show_preferences = dialog == Some("preferences");
         studio.show_about = dialog == Some("about");
         if dialog == Some("discard") {
@@ -349,7 +360,7 @@ impl StudioApp {
         if let Some(step) = dialog.and_then(|d| d.strip_prefix("tour")) {
             studio.tour = Some(step.trim_start_matches(':').parse::<usize>().map_or(0, |s| s.saturating_sub(1)));
         } else if dialog.is_none() && options.screenshot.is_none() && !studio.settings.tour_done {
-            studio.tour = Some(0);
+            studio.tour_pending = true;
         }
         Self {
             studio,
@@ -490,6 +501,7 @@ impl StudioApp {
             };
             item(ui, tr("New project"), "Ctrl+N", Command::NewProject);
             item(ui, tr("Open…"), "Ctrl+O", Command::Open);
+            item(ui, tr("Start page"), "", Command::ShowStartPage);
             item(ui, tr("Import SquareLine project…"), "Ctrl+I", Command::ImportSquareLine);
             ui.separator();
             item(ui, tr("Save"), "Ctrl+S", Command::Save);
@@ -799,6 +811,14 @@ impl eframe::App for StudioApp {
             .show_leaf_close_all_buttons(false)
             .show(ctx, &mut Viewer { studio: &mut self.studio });
         dialogs::show(ctx, &mut self.studio);
+        crate::start::show(ctx, &mut self.studio);
+        let s = &mut self.studio;
+        let busy =
+            s.start_page.is_some() || s.new_project.is_some() || s.confirm_discard.is_some() || s.report.is_some();
+        if s.tour_pending && !busy {
+            s.tour_pending = false;
+            s.tour = Some(0);
+        }
         crate::tour::show(ctx, &mut self.studio);
         self.shortcuts(ctx);
 

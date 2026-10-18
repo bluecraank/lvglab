@@ -13,6 +13,7 @@ mod themes;
 mod timeline;
 
 pub use fonts::relative as relative_path;
+pub use timeline::ago;
 
 use eframe::egui;
 use serde::{Deserialize, Serialize};
