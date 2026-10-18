@@ -54,6 +54,27 @@ impl CanvasBackground {
     }
 }
 
+/// What draws the preview on the canvas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreviewRenderer {
+    /// The editor's own drawing: instant, with every editing aid.
+    #[default]
+    Editor,
+    /// LVGL itself renders the export of the screen (LVGL 8 projects).
+    Lvgl,
+}
+
+impl PreviewRenderer {
+    pub const ALL: [Self; 2] = [Self::Editor, Self::Lvgl];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Editor => "Editor (fast)",
+            Self::Lvgl => "LVGL (exact, LVGL 8)",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -66,6 +87,7 @@ pub struct AppSettings {
     pub reopen_last: bool,
     // Canvas
     pub canvas_background: CanvasBackground,
+    pub preview_renderer: PreviewRenderer,
     pub grid_size: u32,
     pub show_grid: bool,
     pub snap_to_grid: bool,
@@ -119,6 +141,7 @@ impl Default for AppSettings {
             ui_scale: 1.0,
             reopen_last: false,
             canvas_background: CanvasBackground::Theme,
+            preview_renderer: PreviewRenderer::Editor,
             grid_size: 10,
             show_grid: false,
             snap_to_grid: false,

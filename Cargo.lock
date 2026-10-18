@@ -1680,6 +1680,7 @@ dependencies = [
  "image",
  "lvglab-ai",
  "lvglab-codegen",
+ "lvglab-lvgl",
  "lvglab-model",
  "lvglab-spj",
  "rfd",
@@ -1711,6 +1712,16 @@ dependencies = [
  "lvglab-spj",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "lvglab-lvgl"
+version = "0.10.0"
+dependencies = [
+ "cc",
+ "image",
+ "lvglab-codegen",
+ "lvglab-model",
 ]
 
 [[package]]

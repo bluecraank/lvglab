@@ -9,7 +9,7 @@ use crate::assistant::effort_label;
 use crate::commands::Command;
 use crate::i18n::{self, Language, tr};
 use crate::modal::{self, Action, Tone};
-use crate::settings::{Appearance, CanvasBackground};
+use crate::settings::{Appearance, CanvasBackground, PreviewRenderer};
 use crate::visuals;
 use crate::widgets::{self, grid, label, muted, section};
 
@@ -264,6 +264,19 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                         &mut s.canvas_background,
                         &CanvasBackground::ALL,
                         CanvasBackground::label,
+                    );
+                    ui.end_row();
+                    label(
+                        ui,
+                        tr("Preview"),
+                        tr("LVGL runs the code of the export with the real library, so the canvas shows exactly what the device draws. Only for LVGL 8 projects; selection frames and the simulator still use the editor's drawing."),
+                    );
+                    widgets::choice(
+                        ui,
+                        "preview_renderer",
+                        &mut s.preview_renderer,
+                        &PreviewRenderer::ALL,
+                        PreviewRenderer::label,
                     );
                     ui.end_row();
                     label(ui, tr("Grid size"), "");
