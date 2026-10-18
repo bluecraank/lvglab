@@ -878,4 +878,21 @@ mod tests {
         assert_eq!(back.lvgl_version, LvglVersion::V8_3_11);
         assert!(back.widget(id).is_some());
     }
+
+    #[test]
+    fn opening_an_lvgl_9_project_removes_what_it_lacks() {
+        let mut project = Project::new("Old");
+        project.lvgl_version = LvglVersion::V9_2_2;
+        let screen = project.screens[0].id;
+        let wheel = project.new_widget(WidgetKind::Colorwheel);
+        project.insert(screen, 0, wheel).unwrap();
+        let path = std::env::temp_dir().join(format!("lvglab-open-{}.lvglab", std::process::id()));
+        project.save(&path).unwrap();
+
+        let mut studio = Studio::new(AppSettings { save_timeline: false, ..AppSettings::default() });
+        studio.execute(Command::OpenPath(path.clone()), true);
+        std::fs::remove_file(&path).ok();
+        assert!(studio.doc.project.screens[0].children.is_empty());
+        assert_eq!(studio.report.as_ref().map(|r| r.lines.len()), Some(1));
+    }
 }

@@ -180,6 +180,8 @@ impl Studio {
                     self.timeline = timeline;
                 }
                 self.notify(trf("Opened {}", &[&path.display()]));
+                // Files from older versions may hold what the project's LVGL release lacks.
+                self.remove_unsupported(false);
             }
             Err(err) => self.show_error(tr("Open failed"), err.to_string()),
         }
