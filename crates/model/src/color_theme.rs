@@ -1,6 +1,6 @@
 //! Color themes: named color variables with one value per theme. Styles can
 //! reference a variable instead of a fixed color; switching the theme at
-//! runtime recolors every bound property (SquareLine compatible).
+//! runtime recolors every bound property.
 
 use serde::{Deserialize, Serialize};
 

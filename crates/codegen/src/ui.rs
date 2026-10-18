@@ -1,6 +1,4 @@
-//! Generation of the LVGL UI sources. The layout and the public API follow
-//! SquareLine Studio's flat export, so an LVGLab export can replace one
-//! without changes to the application:
+//! Generation of the LVGL UI sources, a flat set of files with a small API:
 //!
 //! * `ui.h` / `ui.c`: `ui_init()`, `ui_destroy()`, `ui_relocalize()`,
 //!   image and font declarations
@@ -1512,7 +1510,7 @@ mod tests {
     }
 
     #[test]
-    fn components_export_like_squareline() {
+    fn components_export_create_functions_and_child_indexes() {
         let mut project = project();
         let definition = project.add_component();
         let root = project.widget(definition).unwrap().children[0].id;

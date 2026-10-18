@@ -320,7 +320,7 @@
   "Imported from SquareLine": "Importado de SquareLine",
   "Imported with notes": "Importado con observaciones",
   "Imported {} — save it as studio project to keep it.": "{} importado: guárdalo como proyecto de studio para conservarlo.",
-  "Imports SquareLine Studio projects. Not affiliated with LVGL or SquareLine.": "Importa proyectos de SquareLine Studio. Sin relación con LVGL ni SquareLine.",
+  "Imports SquareLine Studio projects. Not affiliated with LVGL.": "Importa proyectos de SquareLine Studio. Sin relación con LVGL.",
   "In the display driver": "En el controlador de pantalla",
   "Indent": "Sangría",
   "Indicator": "Indicador",

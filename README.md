@@ -9,7 +9,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 ![LVGLab](docs/screenshot.png)
 
-> LVGLab is not affiliated with LVGL LLC or SquareLine Studio.
+> LVGLab is not affiliated with LVGL LLC.
 
 ---
 
@@ -72,7 +72,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
   click for screen recordings, **⏺ GIF** records the display as an animated GIF, and **Live data** moves gauges
   and numeric labels (or shows their widest values).
 - **Components**: reusable widget groups, edited like a screen and placed with the *Component* widget.
-  Exported like SquareLine (`ui_<Name>_create()`, `ui_comp_get_child()`, `UI_COMP_<NAME>_<CHILD>`, create hooks).
+  Exported as `ui_<Name>_create()` with `ui_comp_get_child()`, `UI_COMP_<NAME>_<CHILD>` and create hooks.
 - **Statistics** in the toolbar: estimated RAM and flash of the export, widgets on the current screen and in total.
 - **Font check**: warns when a text uses characters its font does not contain.
 - **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound
@@ -84,10 +84,9 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 **Export**
 
-- Clean, readable LVGL 8 or LVGL 9 C code with the **same file layout and API as a SquareLine export** (`ui_init`,
+- Clean, readable LVGL 8 or LVGL 9 C code with a flat file layout and a small API (`ui_init`,
   `ui_<Screen>_screen_init/destroy/relocalize`, `ui_img_<file>_png`, `ui_font_<name>`, `ui_theme_set`,
-  `ui_object_set_themeable_style_property`, `ui____initial_actions0`), so it replaces a SquareLine export
-  without changes to the firmware.
+  `ui_object_set_themeable_style_property`, `ui____initial_actions0`).
 - Configurable symbol prefix (`ui`, `sett`, …) for several UI libraries in one firmware.
 - Multi-language texts with [lv_i18n](https://github.com/lvgl/lv_i18n) (`_("text")`, `ui_relocalize()`).
 - LVGL 9: only the native API of the selected release, no deprecated aliases of renamed functions.
@@ -231,7 +230,7 @@ What is imported:
 
 - Display resolution, round/rectangular shape, theme mode and colors, LVGL version
 - Export settings: variable prefix (`custom_variable_prefix`), multi-language mode. Byte swap is switched
-  on, as in SquareLine's Arduino exports. The library is named after the project folder (e.g. `ui_round`).
+  on. The library is named after the project folder (e.g. `ui_round`).
 - **Components** from `components/*.ecomp`.
 - **Color themes** from `Themes.slt`. Styles that use a theme color stay bound to it.
 - Texts marked as translatable (labels, check boxes)
@@ -258,8 +257,7 @@ Things to know:
   to the nearest built-in Montserrat size, so the project still compiles.
 - **Animations** and SquareLine **events** are not imported yet. The import report lists everything that was skipped.
 - Unknown object types are imported as Panels and listed in the report.
-- Tested with real SquareLine 1.6 projects (round 466×466 and rectangular). The exports compile against LVGL 8.3.11,
-  and when rendered with LVGL they match SquareLine's own screenshots.
+- Tested with real SquareLine 1.6 projects (round 466×466 and rectangular). The exports compile against LVGL 8.3.11.
 
 ## Exporting the UI library
 
@@ -466,7 +464,7 @@ crates/
 Design principles:
 
 - **Data-driven widget catalog** ([`catalog.rs`](crates/model/src/catalog.rs)). Every widget is described
-  once: properties, defaults, style parts, C templates and SquareLine names. The editor, the importer and the
+  once: properties, defaults, style parts, C templates and the names the importer maps. The editor, the importer and the
   code generator all work from this description. Adding a widget means adding a catalog entry, not touching
   three code paths.
 - **Declarative LVGL enums**. One `lv_enum!` macro maps Rust enums to C constants, labels and
@@ -502,5 +500,4 @@ Contributions are welcome: issues, translations, widget previews and importer im
 
 ## License
 
-[MIT](LICENSE). LVGL is MIT licensed as well. SquareLine Studio is a product of its respective owners.
-This project only reads its project files.
+[MIT](LICENSE). LVGL is MIT licensed as well.
