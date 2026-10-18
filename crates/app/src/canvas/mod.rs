@@ -954,6 +954,15 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
         ui.toggle_value(&mut s.smart_guides, tr("Guides"))
             .on_hover_text(tr("Snap to the edges and centers of neighbors while moving"));
         ui.toggle_value(&mut s.show_hidden, tr("Hidden")).on_hover_text(tr("Outline hidden widgets in orange"));
+        if studio.simulation.is_none()
+            && ui
+                .button("🎲")
+                .on_hover_text(tr("Random values for all widgets of this screen (Shift: all screens)"))
+                .clicked()
+        {
+            let all = ui.input(|i| i.modifiers.shift);
+            studio.push(crate::commands::Command::Randomize { all });
+        }
         if studio.simulation.is_none() && studio.selected.is_some_and(|id| id != studio.screen) {
             ui.separator();
             align::toolbar(ui, studio);

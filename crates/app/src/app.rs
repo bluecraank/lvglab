@@ -371,6 +371,9 @@ impl StudioApp {
             studio.execute(Command::NewProject, true);
         }
         studio.canvas.overview = dialog == Some("overview");
+        if options.randomize {
+            studio.randomize(true);
+        }
         if let Some(dir) = options.export_screenshots.clone() {
             studio.start_screenshots(dir, true);
         }
@@ -583,6 +586,9 @@ impl StudioApp {
             item(ui, tr("Delete"), "Del", selected.is_some(), selected.map(Command::Delete));
             ui.separator();
             item(ui, tr("Add screen"), "", true, Some(Command::AddScreen));
+            ui.separator();
+            item(ui, tr("Randomize values of this screen"), "", true, Some(Command::Randomize { all: false }));
+            item(ui, tr("Randomize values of all screens"), "", true, Some(Command::Randomize { all: true }));
             ui.separator();
             if ui.button(tr("Preferences…")).clicked() {
                 s.show_preferences = true;

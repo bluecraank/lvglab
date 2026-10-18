@@ -62,6 +62,10 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Merge projects** (File → Merge project…): take screens of another project (or a SquareLine project) over,
   with the components, fonts, images and theme colors they use. A wizard lists every name that already
   exists; rename the incoming entry or use the existing one. References between the merged screens follow.
+- **Randomizer** (🎲 in the canvas bar, Shift for all screens; Edit menu): random plausible values for arcs, bars,
+  sliders, meters, LEDs, switches, check boxes, lists, charts and the numbers in labels and tables, so that
+  screenshots do not show zeros everywhere. One undoable step. `--randomize` does it at startup, e.g. together
+  with `--export-screenshots`.
 - **Screenshots** (File → Export screenshots…): a PNG of every screen at the resolution of the display, without
   selection frames; round displays get a transparent corner. `lvglab project.lvglab --export-screenshots <folder>`
   does the same from the command line.
@@ -164,7 +168,7 @@ Platform notes:
 ### Command line
 
 ```text
-lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--simulate] [--screenshot <out.png>] [--export-screenshots <folder>]
+lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--simulate] [--screenshot <out.png>] [--export-screenshots <folder>] [--randomize]
 ```
 
 | Option | Meaning |
@@ -175,6 +179,7 @@ lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [
 | `--dialog <name>` | Opens `start`, `new`, `preferences`, `about`, `discard`, `close`, the welcome tour (`tour`, `tour:<step>`) or the merge wizard (`merge:<file>`, `merge-conflicts:<file>`) at start (documentation). |
 | `--screenshot <out.png>` | Renders the window into a PNG and exits (documentation, CI). |
 | `--export-screenshots <folder>` | Saves a PNG of every screen of the project into the folder and exits. |
+| `--randomize` | Gives all widgets random values after opening, e.g. for the screenshots. |
 
 Started without a project, LVGLab shows the start page (unless *Open the last project on start* is enabled
 in the preferences). The environment variable `LVGLAB_DATA_DIR` keeps settings and the panel layout in

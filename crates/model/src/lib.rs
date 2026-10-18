@@ -18,6 +18,7 @@ pub mod layout;
 pub mod merge;
 pub mod project;
 pub mod prop;
+pub mod randomize;
 pub mod series;
 pub mod style;
 pub mod theme;

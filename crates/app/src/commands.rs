@@ -55,6 +55,10 @@ pub enum Command {
     ShowStartPage,
     /// Saves a PNG of every screen (asks for the folder).
     ExportScreenshots,
+    /// Random values for the widgets of the current screen or of all screens.
+    Randomize {
+        all: bool,
+    },
     /// Takes screens of another project over (asks for the file).
     MergeProject,
     MergeProjectPath(PathBuf),
@@ -115,6 +119,7 @@ impl Studio {
         }
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
+            Command::Randomize { all } => self.randomize(all),
             Command::ExportScreenshots => {
                 let project_dir = self.doc.dir().map(Path::to_path_buf);
                 let default = crate::screenshots::default_dir(project_dir.as_deref(), &self.doc.project.name);
@@ -422,6 +427,15 @@ impl Studio {
             // The copy may come from a project for another LVGL release.
             self.remove_unsupported(false);
         }
+    }
+
+    /// Fills the widgets with random plausible values (one undoable step).
+    pub fn randomize(&mut self, all: bool) {
+        let seed =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+        let screens = if all { Vec::new() } else { vec![self.screen] };
+        let changed = lvglab_model::randomize::randomize(&mut self.doc.project, &screens, seed);
+        self.notify(trf("{} widgets got random values", &[&changed]));
     }
 
     pub fn show_error(&mut self, title: &str, message: String) {
