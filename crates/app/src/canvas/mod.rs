@@ -200,7 +200,9 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let theme = Theme::new(&project.theme, &project.display);
     let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
     let measure = EguiMeasure { ctx: ui.ctx(), assets: &studio.assets, project, images: studio.assets.image_sizes() };
-    let layout = Layout::compute(screen, width, height, &resolver, &measure, studio.selected);
+    // Component instances are shown with the content of their component.
+    let expanded = project.expand_instances(screen);
+    let layout = Layout::compute(&expanded, width, height, &resolver, &measure, studio.selected);
     let preview_state = match &studio.simulation {
         Some(sim) => sim.preview_state(),
         None => studio.selected.filter(|_| studio.style_state.0 != 0).map(|id| (id, studio.style_state)),
@@ -655,7 +657,7 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
 }
 
 fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
-    layout
+    let mut infos: Vec<NodeInfo> = layout
         .nodes
         .iter()
         .map(|n| {
@@ -673,7 +675,18 @@ fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
                 movable: n.parent.is_some() && !n.widget.def().managed_geometry && !parent_flex,
             }
         })
-        .collect()
+        .collect();
+    // Objects inside a component instance stand for the instance itself.
+    for index in 0..infos.len() {
+        if infos[index].id.0 >= lvglab_model::project::EXPANDED_ID_BASE {
+            let owner = infos[index].parent.map(|p| infos[p].id);
+            if let Some(owner) = owner {
+                infos[index].id = owner;
+                infos[index].movable = false;
+            }
+        }
+    }
+    infos
 }
 
 fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {

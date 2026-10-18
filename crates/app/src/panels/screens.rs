@@ -62,4 +62,54 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     }
     ui.add_space(6.0);
     muted(ui, tr("The first screen is loaded at start. Right-click for more."));
+    components(ui, studio);
+}
+
+/// Reusable components: edited like a screen, placed with the Component widget.
+fn components(ui: &mut egui::Ui, studio: &mut Studio) {
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(tr("Components")).strong());
+        if ui.small_button("+").on_hover_text(tr("Add component")).clicked() {
+            studio.push(Command::AddComponent);
+        }
+    });
+    let components: Vec<(WidgetId, String, usize)> =
+        studio.doc.project.components.iter().map(|c| (c.id, c.name.clone(), c.descendant_count())).collect();
+    if components.is_empty() {
+        muted(ui, tr("Components are reusable groups of widgets; SquareLine components are imported too."));
+        return;
+    }
+    let count = components.len();
+    for (index, (id, name, widgets)) in components.into_iter().enumerate() {
+        let current = studio.screen == id;
+        let response = ui
+            .horizontal(|ui| {
+                let label = ui.selectable_label(current, RichText::new(format!("📦  {name}")).strong());
+                muted(ui, trf("{} widgets", &[&widgets.saturating_sub(1)]));
+                label
+            })
+            .inner;
+        if response.clicked() {
+            studio.select_screen(id);
+        }
+        response.context_menu(|ui| {
+            if ui.add_enabled(index > 0, egui::Button::new(tr("Move up"))).clicked() {
+                studio.push(Command::Shift { id, delta: -1 });
+                ui.close_menu();
+            }
+            if ui.add_enabled(index + 1 < count, egui::Button::new(tr("Move down"))).clicked() {
+                studio.push(Command::Shift { id, delta: 1 });
+                ui.close_menu();
+            }
+            if ui.button(tr("Duplicate")).clicked() {
+                studio.push(Command::Duplicate(id));
+                ui.close_menu();
+            }
+            if ui.button(tr("Delete")).clicked() {
+                studio.push(Command::Delete(id));
+                ui.close_menu();
+            }
+        });
+    }
 }

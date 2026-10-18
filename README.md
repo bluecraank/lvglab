@@ -66,6 +66,8 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - **Simulator** (F5): play the UI on the canvas. Buttons show their pressed style, switches and check
   boxes toggle, sliders and arcs follow the mouse, and the project's events run (screen changes, flags,
   states, texts, values). The **Record** mode draws the pointer and every click for screen recordings.
+- **Components**: reusable widget groups, edited like a screen and placed with the *Component* widget.
+  Exported like SquareLine (`ui_<Name>_create()`, `ui_comp_get_child()`, `UI_COMP_<NAME>_<CHILD>`, create hooks).
 - **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound
   to a theme color follow `ui_theme_set()` at runtime.
 - **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.
@@ -209,6 +211,7 @@ What is imported:
 - Display resolution, round/rectangular shape, theme mode and colors, LVGL version
 - Export settings: variable prefix (`custom_variable_prefix`), multi-language mode, byte swap of the
   TFT_eSPI board. The library is named after the project folder (e.g. `ui_round`).
+- **Components** from `components/*.ecomp`.
 - **Color themes** from `Themes.slt`. Styles that use a theme color stay bound to it.
 - Texts marked as translatable (labels, check boxes)
 - All screens and widgets with name, position and size (including % and content units), alignment
@@ -232,7 +235,7 @@ Things to know:
 - A font that is referenced but has no `.fcfg` gets its size from the trailing digits of its name
   (`FontCBI40` → 40 px). Assign the TTF file in the **Fonts** panel. Until then the export falls back
   to the nearest built-in Montserrat size, so the project still compiles.
-- **Animations**, SquareLine **events** and **components** (`.ecomp`) are not imported yet. The import report lists everything that was skipped.
+- **Animations** and SquareLine **events** are not imported yet. The import report lists everything that was skipped.
 - Unknown object types are imported as Panels and listed in the report.
 - Tested with real SquareLine 1.6 projects (round 466×466 and rectangular). The exports compile against LVGL 8.3.11,
   and when rendered with LVGL they match SquareLine's own screenshots.
@@ -253,6 +256,7 @@ ui_round/                   library name (project settings)
     ├── ui_helpers.h/.c             screen change and flag/state helpers
     ├── ui_theme_manager.h/.c       ui_object_set_themeable_style_property(), ...
     ├── ui_themes.h/.c              UI_THEME_*, theme colors, ui_theme_set(), ui_theme_idx
+    ├── ui_comp*.h/.c               components: ui_<Name>_create(), ui_comp_get_child(), hooks
     ├── ui_events.h                 declarations of your event functions
     ├── ui_events_weak.c            empty weak defaults so the project always links
     ├── ui_events.c                 YOUR code: created once, never overwritten

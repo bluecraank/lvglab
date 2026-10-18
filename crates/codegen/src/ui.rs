@@ -123,6 +123,21 @@ pub fn generate(project: &Project, assets: &AssetDecls) -> UiSources {
     files.push(text(names.file("theme_manager.c"), theme_manager_c(project, &names)));
     files.push(text(names.file("themes.h"), themes_h(project, &names)));
     files.push(text(names.file("themes.c"), themes_c(project, &names)));
+    if !project.components.is_empty() {
+        for component in &project.components {
+            let generated = ScreenGen::new(&mut ctx, component).component();
+            if generated.source.is_empty() {
+                continue;
+            }
+            let stem = names.component_file(&component.name);
+            files.push(text(format!("{stem}.h"), generated.header));
+            files.push(text(format!("{stem}.c"), generated.source));
+        }
+        files.push(text(names.file("comp.h"), comp_h(project, &names)));
+        files.push(text(names.file("comp.c"), comp_c(project, &names)));
+        files.push(text(names.file("comp_hook.h"), comp_hook_h(project, &names)));
+        files.push(text(names.file("comp_hook.c"), comp_hook_c(project, &names)));
+    }
     files.push(GeneratedFile::text(names.file("events.c"), events_c(&names), WritePolicy::KeepExisting));
     UiSources { files, warnings: ctx.warnings }
 }
@@ -177,6 +192,8 @@ struct ScreenGen<'c, 'a> {
     relocalize: Vec<String>,
     vars: Vec<String>,
     callbacks: Vec<String>,
+    /// Objects are local variables (component create functions).
+    local: bool,
 }
 
 impl<'c, 'a> ScreenGen<'c, 'a> {
@@ -190,7 +207,71 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
             relocalize: Vec::new(),
             vars: Vec::new(),
             callbacks: Vec::new(),
+            local: false,
         }
+    }
+
+    /// `<prefix>_comp_<name>.h` and `.c` of a component definition.
+    fn component(mut self) -> ScreenFiles {
+        let definition = self.screen;
+        let names = self.ctx.names;
+        let project = self.ctx.project;
+        let name = definition.name.clone();
+        self.local = true;
+        self.init.indent = 1;
+        if definition.children.len() > 1 {
+            self.ctx.warnings.push(format!(
+                "component {name}: only the first top level object is exported; put everything into one container"
+            ));
+        }
+        let Some(root) = definition.children.first() else {
+            self.ctx.warnings.push(format!("component {name} is empty and was skipped"));
+            return ScreenFiles { header: String::new(), source: String::new() };
+        };
+        self.widget(root, "comp_parent");
+        for line in std::mem::take(&mut self.deferred) {
+            self.init.line(&line);
+        }
+        let root_var = names.var(root.id).to_owned();
+        let count = names.component_count(&name);
+        let mut children = Vec::new();
+        root.walk(&mut |w| children.push((w.id, w.name.clone())));
+
+        let mut body = Code::default();
+        body.line(&format!("/* Component: {name} */"));
+        for (index, (_, child)) in children.iter().enumerate() {
+            body.line(&format!("#define {} {index}", names.component_child(&name, child)));
+        }
+        body.line(&format!("#define {count} {}", children.len()));
+        body.line(&format!("lv_obj_t * {}(lv_obj_t * comp_parent);", names.component_create(&name)));
+        let header_text = header_file(project, &format!("{}.h", names.component_file(&name)), &body.text);
+
+        let mut file = Code::default();
+        file.line(&header(project));
+        let _ = write!(file.text, "#include \"{}\"\n\n", main_header(names));
+        file.line(&format!("lv_obj_t * {}(lv_obj_t * comp_parent)", names.component_create(&name)));
+        file.line("{");
+        file.text.push_str(&self.init.text);
+        file.indent = 1;
+        file.blank();
+        file.line(&format!("lv_obj_t ** children = lv_mem_alloc(sizeof(lv_obj_t *) * {count});"));
+        for (id, child) in &children {
+            file.line(&format!("children[{}] = {};", names.component_child(&name, child), names.var(*id)));
+        }
+        let event = names.component_event();
+        file.line(&format!(
+            "lv_obj_add_event_cb({root_var}, {}, {event}, children);",
+            names.helper("comp_get_child_event_cb")
+        ));
+        file.line(&format!(
+            "lv_obj_add_event_cb({root_var}, {}, LV_EVENT_DELETE, children);",
+            names.helper("comp_del_event_cb")
+        ));
+        file.line(&format!("{}({root_var});", comp_hook_name(names, &name)));
+        file.line(&format!("return {root_var};"));
+        file.indent = 0;
+        file.line("}");
+        ScreenFiles { header: header_text, source: file.text }
     }
 
     fn run(mut self) -> ScreenFiles {
@@ -278,6 +359,9 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
                 self.init.line(prelude);
             }
         }
+        if self.local {
+            self.init.line(&format!("lv_obj_t * {obj};"));
+        }
         self.init.line(&format!("{obj} = {};", scope.expand(def.create)));
         if !def.post_create.is_empty() {
             self.init.line(&scope.expand(def.post_create));
@@ -299,7 +383,12 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         }
         self.flags_and_states(widget, &obj);
         self.styles(widget, def, &scope, &obj);
-        if !widget.events.is_empty() {
+        if !widget.events.is_empty() && self.local {
+            self.ctx.warnings.push(format!(
+                "{}: events of objects inside components are not exported yet; add them to the instances",
+                widget.name
+            ));
+        } else if !widget.events.is_empty() {
             let callback = self.ctx.names.event_fn(widget.id);
             self.init.line(&format!("lv_obj_add_event_cb({obj}, {callback}, LV_EVENT_ALL, NULL);"));
             self.event_callback(&callback, &widget.events);
@@ -328,6 +417,15 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
                 formatted = Formatted { expr: format!("_({})", formatted.expr), ..formatted };
             }
             scope.props.insert(prop.key, formatted);
+        }
+        if widget.kind == WidgetKind::Component {
+            let name = widget.prop_text("component");
+            let create = if self.ctx.project.component(&name).is_some_and(|c| !c.children.is_empty()) {
+                self.ctx.names.component_create(&name)
+            } else {
+                "lv_obj_create".to_owned()
+            };
+            scope = scope.var("component_create", create);
         }
         scope
     }
@@ -621,6 +719,9 @@ fn ui_h(ctx: &Context<'_>, assets: &AssetDecls) -> String {
     for suffix in ["helpers.h", "events.h", "theme_manager.h", "themes.h"] {
         code.line(&format!("#include \"{}\"", names.file(suffix)));
     }
+    if !project.components.is_empty() {
+        code.line(&format!("#include \"{}\"", names.file("comp.h")));
+    }
     code.blank();
     code.line("/* Screens */");
     for screen in &project.screens {
@@ -676,6 +777,9 @@ fn ui_c(ctx: &Context<'_>, assets: &AssetDecls) -> String {
     }
     code.blank();
     code.open(&format!("void {}(void)", names.global("init")));
+    if !project.components.is_empty() {
+        code.line(&format!("{} = lv_event_register_id();", names.component_event()));
+    }
     code.line("lv_disp_t * dispp = lv_disp_get_default();");
     code.line(&format!(
         "lv_theme_t * theme = lv_theme_default_init(dispp, lv_palette_main({}), lv_palette_main({}), {}, LV_FONT_DEFAULT);",
@@ -954,6 +1058,94 @@ fn themes_c(project: &Project, names: &Naming) -> String {
     code.text
 }
 
+fn comp_h(project: &Project, names: &Naming) -> String {
+    let mut code = Code::default();
+    code.line(LVGL_INCLUDE);
+    code.line(&format!("extern uint32_t {};", names.component_event()));
+    code.line("/* The object `child_idx` (one of the <PREFIX>_COMP_* indexes) of a component instance. */");
+    code.line(&format!("lv_obj_t * {}(lv_obj_t * comp, uint32_t child_idx);", names.global("comp_get_child")));
+    code.line(&format!("void {}(lv_event_t * e);", names.helper("comp_get_child_event_cb")));
+    code.line(&format!("void {}(lv_event_t * e);", names.helper("comp_del_event_cb")));
+    code.blank();
+    code.line(&format!("#include \"{}\"", names.file("comp_hook.h")));
+    for component in project.components.iter().filter(|c| !c.children.is_empty()) {
+        code.line(&format!("#include \"{}.h\"", names.component_file(&component.name)));
+    }
+    header_file(project, &names.file("comp.h"), &code.text)
+}
+
+fn comp_c(project: &Project, names: &Naming) -> String {
+    let p = names.prefix();
+    format!(
+        "{header}
+#include \"{main}\"
+
+uint32_t {event};
+
+typedef struct {{
+    uint32_t child_idx;
+    lv_obj_t * child;
+}} _{p}_comp_get_child_t;
+
+lv_obj_t * {get}(lv_obj_t * comp, uint32_t child_idx)
+{{
+    _{p}_comp_get_child_t info;
+    info.child = NULL;
+    info.child_idx = child_idx;
+    lv_event_send(comp, {event}, &info);
+    return info.child;
+}}
+
+void {get_cb}(lv_event_t * e)
+{{
+    lv_obj_t ** children = lv_event_get_user_data(e);
+    _{p}_comp_get_child_t * info = lv_event_get_param(e);
+    info->child = children[info->child_idx];
+}}
+
+void {del_cb}(lv_event_t * e)
+{{
+    lv_obj_t ** children = lv_event_get_user_data(e);
+    lv_mem_free(children);
+}}
+",
+        header = header(project),
+        main = main_header(names),
+        event = names.component_event(),
+        get = names.global("comp_get_child"),
+        get_cb = names.helper("comp_get_child_event_cb"),
+        del_cb = names.helper("comp_del_event_cb"),
+    )
+}
+
+fn comp_hook_name(names: &Naming, component: &str) -> String {
+    names.global(&format!("comp_{}_create_hook", c_ident(component)))
+}
+
+fn comp_hook_h(project: &Project, names: &Naming) -> String {
+    let mut code = Code::default();
+    code.line(LVGL_INCLUDE);
+    code.line("/* Called at the end of every component create function. Define them in your code to adjust");
+    code.line(&format!("   new instances; empty defaults live in {}. */", names.file("comp_hook.c")));
+    for component in &project.components {
+        code.line(&format!("void {}(lv_obj_t * comp);", comp_hook_name(names, &component.name)));
+    }
+    header_file(project, &names.file("comp_hook.h"), &code.text)
+}
+
+fn comp_hook_c(project: &Project, names: &Naming) -> String {
+    let mut code = Code::default();
+    code.line(&header(project));
+    code.line(&format!("#include \"{}\"\n", names.file("comp_hook.h")));
+    for component in &project.components {
+        code.line(&format!(
+            "__attribute__((weak)) void {}(lv_obj_t * comp)\n{{\n    LV_UNUSED(comp);\n}}\n",
+            comp_hook_name(names, &component.name)
+        ));
+    }
+    code.text
+}
+
 fn events_h(ctx: &Context<'_>) -> String {
     let names = ctx.names;
     let mut code = Code::default();
@@ -1162,6 +1354,50 @@ mod tests {
         let themes_c = file(&sources, "ui_themes.c");
         assert!(themes_c.contains("_ui_theme_color_Main[2] = {0xFFFFFF, 0xF15C00};"));
         assert!(themes_c.contains("_ui_theme_alpha_Main[2] = {255, 200};"));
+    }
+
+    #[test]
+    fn components_export_like_squareline() {
+        let mut project = project();
+        let definition = project.add_component();
+        let root = project.widget(definition).unwrap().children[0].id;
+        let mut label = project.new_widget(WidgetKind::Label);
+        label.name = "Temp".into();
+        project.insert(root, 0, label).unwrap();
+        let screen = project.screens[0].id;
+        let mut instance = project.new_widget(WidgetKind::Component);
+        instance.name = "Gauge".into();
+        instance.geometry.x = Coord::px(12);
+        project.insert(screen, 0, instance).unwrap();
+        let sources = generate(&project, &AssetDecls::default());
+        let h = file(&sources, "ui_comp_component1.h");
+        assert!(h.contains("#define UI_COMP_COMPONENT1_COMPONENT1 0"));
+        assert!(h.contains("#define UI_COMP_COMPONENT1_TEMP 1"));
+        assert!(h.contains("#define _UI_COMP_COMPONENT1_NUM 2"));
+        let c = file(&sources, "ui_comp_component1.c");
+        for expected in [
+            "lv_obj_t * ui_Component1_create(lv_obj_t * comp_parent)",
+            "lv_obj_t * cui_Component1;",
+            "cui_Component1 = lv_obj_create(comp_parent);",
+            "cui_Temp = lv_label_create(cui_Component1);",
+            "children[UI_COMP_COMPONENT1_TEMP] = cui_Temp;",
+            "lv_obj_add_event_cb(cui_Component1, _ui_comp_get_child_event_cb, LV_EVENT_GET_COMP_CHILD, children);",
+            "ui_comp_Component1_create_hook(cui_Component1);",
+        ] {
+            assert!(
+                c.contains(expected),
+                "missing `{expected}` in
+{c}"
+            );
+        }
+        let screen_c = file(&sources, "ui_Screen1.c");
+        assert!(screen_c.contains("ui_Gauge = ui_Component1_create(ui_Screen1);"), "{screen_c}");
+        assert!(screen_c.contains("lv_obj_set_x(ui_Gauge, 12);"));
+        assert!(file(&sources, "ui.c").contains("LV_EVENT_GET_COMP_CHILD = lv_event_register_id();"));
+        assert!(file(&sources, "ui.h").contains("#include \"ui_comp.h\""));
+        assert!(
+            file(&sources, "ui_comp.h").contains("lv_obj_t * ui_comp_get_child(lv_obj_t * comp, uint32_t child_idx);")
+        );
     }
 
     #[test]
