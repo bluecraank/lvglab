@@ -10,6 +10,7 @@
 //! on disk without touching files the user owns.
 
 pub mod font;
+pub mod glyphs;
 pub mod image;
 pub mod library;
 pub mod naming;
@@ -101,6 +102,7 @@ fn build_ui(project: &Project, project_dir: Option<&Path>) -> Output {
     let sources = ui::generate(project, &decls);
     warnings.extend(sources.warnings);
     warnings.extend(missing_asset_warnings(project));
+    warnings.extend(glyphs::warnings(project));
     files.extend(sources.files);
     Output { files, warnings }
 }
