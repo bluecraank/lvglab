@@ -62,6 +62,9 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Merge projects** (File → Merge project…): take screens of another project (or a SquareLine project) over,
   with the components, fonts, images and theme colors they use. A wizard lists every name that already
   exists; rename the incoming entry or use the existing one. References between the merged screens follow.
+- **Screenshots** (File → Export screenshots…): a PNG of every screen at the resolution of the display, without
+  selection frames; round displays get a transparent corner. `lvglab project.lvglab --export-screenshots <folder>`
+  does the same from the command line.
 - **Overview** button in the canvas bar: all screens side by side at a glance; click one to open it.
   The **Hidden** toggle next to Guides switches the orange outline of hidden widgets on and off.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
@@ -161,7 +164,7 @@ Platform notes:
 ### Command line
 
 ```text
-lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--simulate] [--screenshot <out.png>]
+lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--simulate] [--screenshot <out.png>] [--export-screenshots <folder>]
 ```
 
 | Option | Meaning |
@@ -171,6 +174,7 @@ lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [
 | `--simulate` | Starts the simulator with the record overlay. |
 | `--dialog <name>` | Opens `start`, `new`, `preferences`, `about`, `discard`, `close`, the welcome tour (`tour`, `tour:<step>`) or the merge wizard (`merge:<file>`, `merge-conflicts:<file>`) at start (documentation). |
 | `--screenshot <out.png>` | Renders the window into a PNG and exits (documentation, CI). |
+| `--export-screenshots <folder>` | Saves a PNG of every screen of the project into the folder and exits. |
 
 Started without a project, LVGLab shows the start page (unless *Open the last project on start* is enabled
 in the preferences). The environment variable `LVGLAB_DATA_DIR` keeps settings and the panel layout in

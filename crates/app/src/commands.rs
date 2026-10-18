@@ -53,6 +53,8 @@ pub enum Command {
     CreateProject(Box<NewProject>),
     /// The start page with the recent projects.
     ShowStartPage,
+    /// Saves a PNG of every screen (asks for the folder).
+    ExportScreenshots,
     /// Takes screens of another project over (asks for the file).
     MergeProject,
     MergeProjectPath(PathBuf),
@@ -113,6 +115,15 @@ impl Studio {
         }
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
+            Command::ExportScreenshots => {
+                let project_dir = self.doc.dir().map(Path::to_path_buf);
+                let default = crate::screenshots::default_dir(project_dir.as_deref(), &self.doc.project.name);
+                let parent = default.parent().map(Path::to_path_buf).unwrap_or_default();
+                let dialog = crate::sandbox::FileDialog::new().set_title(tr("Screenshot folder")).set_directory(parent);
+                if let Some(dir) = dialog.pick_folder() {
+                    self.start_screenshots(dir, false);
+                }
+            }
             Command::ShowStartPage => self.start_page = Some(crate::start::entries(&self.settings.recent)),
             Command::MergeProject => {
                 let dialog = self.file_dialog().add_filter(tr("Projects"), &[PROJECT_EXTENSION, "spj"]);
@@ -420,7 +431,7 @@ impl Studio {
 }
 
 /// Shows a folder in the system file manager.
-fn open_folder(path: &std::path::Path) {
+pub(crate) fn open_folder(path: &std::path::Path) {
     let program = if cfg!(target_os = "windows") {
         "explorer"
     } else if cfg!(target_os = "macos") {

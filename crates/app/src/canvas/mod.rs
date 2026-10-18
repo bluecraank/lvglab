@@ -58,6 +58,8 @@ pub struct CanvasState {
     drag: Option<Drag>,
     /// All screens side by side instead of the current one.
     pub overview: bool,
+    /// Where the display is drawn, in points (for the screenshot export).
+    pub display_points: Rect,
 }
 
 impl Default for CanvasState {
@@ -71,6 +73,7 @@ impl Default for CanvasState {
             nodes: Vec::new(),
             drag: None,
             overview: false,
+            display_points: Rect::NOTHING,
         }
     }
 }
@@ -258,6 +261,11 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     };
     draw_display_frame(&painter, display, project.display.shape, background, rect);
     studio.canvas.nodes = nodes;
+    studio.canvas.display_points = display;
+    if studio.shots.is_some() {
+        // The screenshot export wants the plain screen.
+        return;
+    }
 
     let to_display = |p: Pos2| -> (i32, i32) {
         let d = (p - origin) / zoom;

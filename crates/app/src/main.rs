@@ -16,6 +16,7 @@ mod monkey;
 mod panels;
 mod recorder;
 mod sandbox;
+mod screenshots;
 mod settings;
 mod simulator;
 mod start;
@@ -27,7 +28,7 @@ mod widgets;
 use std::path::PathBuf;
 
 /// Command line:
-/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--panel <name>] [--simulate] [--screenshot out.png]`.
+/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--panel <name>] [--simulate] [--screenshot out.png] [--export-screenshots <folder>]`.
 #[derive(Default)]
 pub struct LaunchOptions {
     pub file: Option<PathBuf>,
@@ -42,6 +43,8 @@ pub struct LaunchOptions {
     pub simulate: bool,
     /// Renders one frame into a PNG and exits (documentation, CI).
     pub screenshot: Option<PathBuf>,
+    /// Exports a PNG of every screen into this folder and exits.
+    pub export_screenshots: Option<PathBuf>,
 }
 
 impl LaunchOptions {
@@ -51,6 +54,8 @@ impl LaunchOptions {
         while let Some(arg) = args.next() {
             if arg == "--screenshot" {
                 options.screenshot = args.next().map(PathBuf::from);
+            } else if arg == "--export-screenshots" {
+                options.export_screenshots = args.next().map(PathBuf::from);
             } else if arg == "--panel" {
                 options.panel = args.next().map(|s| s.to_string_lossy().into_owned());
             } else if arg == "--dialog" {
