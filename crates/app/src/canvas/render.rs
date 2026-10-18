@@ -819,31 +819,7 @@ impl<'a> Renderer<'a> {
     }
 
     fn keyboard(&self, widget: &Widget, content: Rect, path: &[&Widget], state: StateMask) {
-        let mode = widget.prop_text("mode");
-        let rows: &[&[&str]] = match mode.as_str() {
-            "LV_KEYBOARD_MODE_TEXT_UPPER" => &[
-                &["1#", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "Del"],
-                &["abc", "A", "S", "D", "F", "G", "H", "J", "K", "L", "Enter"],
-                &["_", "-", "Z", "X", "C", "V", "B", "N", "M", ".", ",", ":"],
-                &["Kb", "<", " ", ">", "OK"],
-            ],
-            "LV_KEYBOARD_MODE_SPECIAL" => &[
-                &["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Del"],
-                &["abc", "+", "-", "/", "*", "=", "%", "!", "?", "#", "<", ">"],
-                &["\\", "@", "$", "(", ")", "{", "}", "[", "]", ";", "\"", "'"],
-                &["Kb", "<", " ", ">", "OK"],
-            ],
-            "LV_KEYBOARD_MODE_TEXT_LOWER" => &[
-                &["1#", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "Del"],
-                &["ABC", "a", "s", "d", "f", "g", "h", "j", "k", "l", "Enter"],
-                &["_", "-", "z", "x", "c", "v", "b", "n", "m", ".", ",", ":"],
-                &["Kb", "<", " ", ">", "OK"],
-            ],
-            _ => {
-                &[&["1", "2", "3", "Kb"], &["4", "5", "6", "OK"], &["7", "8", "9", "Del"], &["+/-", "0", ".", "<", ">"]]
-            }
-        };
-        let rows: Vec<Vec<String>> = rows.iter().map(|r| r.iter().map(|k| (*k).to_owned()).collect()).collect();
+        let rows = keyboard_rows(&widget.prop_text("mode"));
         let items = self.look(path, "items", state);
         let gap = self.resolver.int(path, "main", state, P::PadRow).max(2) as f32 * self.zoom;
         self.key_grid(content, &rows, &items, gap);
@@ -1223,6 +1199,61 @@ struct ArcStroke {
 }
 
 /// Center and centerline radius of an arc of `width` filling `area`.
+/// The keys of an LVGL keyboard mode, row by row.
+pub fn keyboard_rows(mode: &str) -> Vec<Vec<String>> {
+    let rows: &[&[&str]] = match mode {
+        "LV_KEYBOARD_MODE_TEXT_UPPER" => &[
+            &["1#", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "Del"],
+            &["abc", "A", "S", "D", "F", "G", "H", "J", "K", "L", "Enter"],
+            &["_", "-", "Z", "X", "C", "V", "B", "N", "M", ".", ",", ":"],
+            &["Kb", "<", " ", ">", "OK"],
+        ],
+        "LV_KEYBOARD_MODE_SPECIAL" => &[
+            &["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Del"],
+            &["abc", "+", "-", "/", "*", "=", "%", "!", "?", "#", "<", ">"],
+            &["\\", "@", "$", "(", ")", "{", "}", "[", "]", ";", "\"", "'"],
+            &["Kb", "<", " ", ">", "OK"],
+        ],
+        "LV_KEYBOARD_MODE_TEXT_LOWER" => &[
+            &["1#", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "Del"],
+            &["ABC", "a", "s", "d", "f", "g", "h", "j", "k", "l", "Enter"],
+            &["_", "-", "z", "x", "c", "v", "b", "n", "m", ".", ",", ":"],
+            &["Kb", "<", " ", ">", "OK"],
+        ],
+        _ => &[&["1", "2", "3", "Kb"], &["4", "5", "6", "OK"], &["7", "8", "9", "Del"], &["+/-", "0", ".", "<", ">"]],
+    };
+    rows.iter().map(|r| r.iter().map(|k| (*k).to_owned()).collect()).collect()
+}
+
+/// The key under a point of the keyboard's content area: (row, column).
+pub fn key_at(
+    area: lvglab_model::layout::Rect,
+    rows: &[Vec<String>],
+    gap: i32,
+    x: i32,
+    y: i32,
+) -> Option<(usize, usize)> {
+    if rows.is_empty() || !area.contains(x, y) {
+        return None;
+    }
+    let row_h = (area.h - gap * (rows.len() as i32 - 1)) as f32 / rows.len() as f32;
+    let row = ((y - area.y) as f32 / (row_h + gap as f32)) as usize;
+    let row = row.min(rows.len() - 1);
+    let keys = &rows[row];
+    let weights: Vec<f32> = keys.iter().map(|k| if k.trim().is_empty() || k == "Space" { 4.0 } else { 1.0 }).collect();
+    let total: f32 = weights.iter().sum();
+    let width = (area.w - gap * (keys.len() as i32 - 1)) as f32;
+    let mut left = area.x as f32;
+    for (col, weight) in weights.iter().enumerate() {
+        let w = width * weight / total;
+        if (x as f32) < left + w + gap as f32 / 2.0 {
+            return Some((row, col));
+        }
+        left += w + gap as f32;
+    }
+    Some((row, keys.len() - 1))
+}
+
 fn arc_geometry(area: Rect, width: f32) -> (Pos2, f32) {
     let r = area.width().min(area.height()) / 2.0 - width / 2.0;
     (area.center(), r.max(1.0))

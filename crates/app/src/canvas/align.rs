@@ -254,6 +254,7 @@ mod tests {
             rect,
             clip: rect,
             children_area: rect,
+            content: rect,
             parent,
             hidden: false,
             movable: true,

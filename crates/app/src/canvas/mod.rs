@@ -21,6 +21,7 @@ use crate::settings::{AppSettings, CanvasBackground};
 use crate::visuals::{self, ACCENT};
 use assets::AssetCache;
 use render::Renderer;
+pub use render::{key_at, keyboard_rows};
 
 const HANDLE: f32 = 7.0;
 
@@ -32,6 +33,8 @@ pub struct NodeInfo {
     pub rect: lay::Rect,
     pub clip: lay::Rect,
     pub children_area: lay::Rect,
+    /// The area inside border and padding.
+    pub content: lay::Rect,
     pub parent: Option<usize>,
     pub hidden: bool,
     /// Position and size can be edited on the canvas.
@@ -869,6 +872,7 @@ fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
                 rect: n.rect,
                 clip: n.clip,
                 children_area: n.children_area,
+                content: n.content,
                 parent: n.parent,
                 hidden: n.hidden,
                 movable: n.parent.is_some() && !n.widget.def().managed_geometry && !parent_flex,
