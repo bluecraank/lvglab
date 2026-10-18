@@ -1,0 +1,23 @@
+[package]
+name = "lvglab-lvgl"
+description = "LVGL 8.3 compiled into LVGLab to render previews with the real library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[build-dependencies]
+cc = "1"
+
+# The crate wraps a C library, so it needs unsafe code (the workspace forbids it elsewhere).
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[dependencies]
+lvglab-model.workspace = true
+lvglab-codegen.workspace = true
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -59,6 +59,8 @@ pub struct Studio {
     pub merge: Option<crate::merge_dialog::MergeWizard>,
     /// The timeline shows only the steps that changed the current screen.
     pub timeline_this_screen: bool,
+    /// The picture of the LVGL preview.
+    pub lvgl_preview: crate::lvgl_preview::LvglPreview,
     /// The open search window (Ctrl+F).
     pub search: Option<crate::search_dialog::SearchState>,
     /// A running screenshot export.
@@ -189,6 +191,7 @@ impl Studio {
             start_page: None,
             merge: None,
             search: None,
+            lvgl_preview: Default::default(),
             timeline_this_screen: false,
             shots: None,
             exit_requested: false,
@@ -1043,6 +1046,34 @@ mod tests {
         let back = studio.timeline.undo().unwrap();
         assert_eq!(back.lvgl_version, LvglVersion::V8_3_11);
         assert!(back.widget(id).is_some());
+    }
+
+    #[test]
+    fn the_lvgl_preview_draws_lvgl_8_projects_and_gives_way_for_lvgl_9() {
+        crate::sandbox::enable();
+        let ctx = egui::Context::default();
+        let frame = |app: &mut StudioApp| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| app.run_frame_for_test(ctx));
+        };
+        let settings = AppSettings {
+            tour_done: true,
+            preview_renderer: crate::settings::PreviewRenderer::Lvgl,
+            ..AppSettings::default()
+        };
+        let mut studio = Studio::new(settings);
+        studio.start_page = None;
+        let mut app = StudioApp::for_test(studio);
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(app.studio.lvgl_preview.error, None, "{:?}", app.studio.lvgl_preview.skipped);
+        assert!(app.studio.lvgl_preview.has_picture(), "LVGL drew the screen");
+        app.studio.doc.project.lvgl_version = LvglVersion::V9_6_0;
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        // LVGL 9 is not rendered by the preview; the editor draws the screen.
+        assert_eq!(app.studio.lvgl_preview.error, None);
     }
 
     #[test]

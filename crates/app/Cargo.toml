@@ -14,6 +14,7 @@ path = "src/main.rs"
 lvglab-model.workspace = true
 lvglab-spj.workspace = true
 lvglab-codegen.workspace = true
+lvglab-lvgl = { path = "../lvgl" }
 lvglab-ai.workspace = true
 serde.workspace = true
 serde_json.workspace = true

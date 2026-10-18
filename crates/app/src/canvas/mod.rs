@@ -219,6 +219,16 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
         None => studio.selected.filter(|_| studio.style_state.0 != 0).map(|id| (id, studio.style_state)),
     };
     let clip = display.intersect(rect);
+    // LVGL draws the screen itself when the preview is set to it.
+    let lvgl_picture = if studio.settings.preview_renderer == crate::settings::PreviewRenderer::Lvgl
+        && studio.simulation.is_none()
+        && !project.lvgl_version.is_v9()
+    {
+        let dir = studio.doc.dir().map(std::path::Path::to_path_buf);
+        studio.lvgl_preview.texture(ui.ctx(), project, screen_id, dir.as_deref())
+    } else {
+        None
+    };
     // Lays out and paints one screen; offsets are fractions of the display.
     let paint = |widget: &lvglab_model::Widget, offset: (f32, f32), opacity: f32, preview| {
         // Component instances are shown with the content of their component.
@@ -235,7 +245,13 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
             resolver: &resolver,
             preview_state: preview,
         };
-        renderer.draw(&layout, clip);
+        match &lvgl_picture {
+            Some(texture) if offset == (0.0, 0.0) => {
+                let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+                painter.image(texture.id(), display, uv, Color32::WHITE);
+            }
+            _ => renderer.draw(&layout, clip),
+        }
         node_infos(&layout)
     };
     let now = ui.input(|i| i.time);
@@ -262,6 +278,17 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     draw_display_frame(&painter, display, project.display.shape, background, rect);
     studio.canvas.nodes = nodes;
     studio.canvas.display_points = display;
+    if studio.settings.preview_renderer == crate::settings::PreviewRenderer::Lvgl && lvgl_picture.is_none() {
+        if let Some(reason) = studio.lvgl_preview.error.as_deref().filter(|_| studio.simulation.is_none()) {
+            painter.text(
+                rect.left_bottom() + vec2(10.0, -8.0),
+                egui::Align2::LEFT_BOTTOM,
+                format!("{} {reason}", tr("LVGL preview not available:")),
+                egui::FontId::proportional(12.0),
+                visuals::WARNING,
+            );
+        }
+    }
     if studio.shots.is_some() {
         // The screenshot export wants the plain screen.
         return;
