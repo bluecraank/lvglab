@@ -200,27 +200,53 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let theme = Theme::new(&project.theme, &project.display);
     let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
     let measure = EguiMeasure { ctx: ui.ctx(), assets: &studio.assets, project, images: studio.assets.image_sizes() };
-    // Component instances are shown with the content of their component.
-    let expanded = project.expand_instances(screen);
-    let layout = Layout::compute(&expanded, width, height, &resolver, &measure, studio.selected);
     let preview_state = match &studio.simulation {
         Some(sim) => sim.preview_state(),
         None => studio.selected.filter(|_| studio.style_state.0 != 0).map(|id| (id, studio.style_state)),
     };
-    let renderer = Renderer {
-        painter: painter.clone(),
-        origin,
-        zoom,
-        project,
-        assets: &studio.assets,
-        resolver: &resolver,
-        preview_state,
+    let clip = display.intersect(rect);
+    // Lays out and paints one screen; offsets are fractions of the display.
+    let paint = |widget: &lvglab_model::Widget, offset: (f32, f32), opacity: f32, preview| {
+        // Component instances are shown with the content of their component.
+        let expanded = project.expand_instances(widget);
+        let layout = Layout::compute(&expanded, width, height, &resolver, &measure, studio.selected);
+        let mut screen_painter = painter.clone();
+        screen_painter.set_opacity(opacity);
+        let renderer = Renderer {
+            painter: screen_painter,
+            origin: origin + vec2(offset.0 * display_size.x, offset.1 * display_size.y),
+            zoom,
+            project,
+            assets: &studio.assets,
+            resolver: &resolver,
+            preview_state: preview,
+        };
+        renderer.draw(&layout, clip);
+        node_infos(&layout)
     };
-    renderer.draw(&layout, display.intersect(rect));
+    let now = ui.input(|i| i.time);
+    let transition = studio.simulation.as_ref().and_then(|s| s.transition).map(|t| (t, t.frame(now)));
+    let nodes = match transition {
+        Some((t, frame)) => {
+            let old = project.widget(t.from);
+            let paint_old = || {
+                if let Some(old) = old {
+                    paint(old, frame.old_offset, frame.old_opacity, None);
+                }
+            };
+            if frame.new_on_top {
+                paint_old();
+                paint(screen, frame.new_offset, frame.new_opacity, preview_state)
+            } else {
+                let nodes = paint(screen, frame.new_offset, frame.new_opacity, preview_state);
+                paint_old();
+                nodes
+            }
+        }
+        None => paint(screen, (0.0, 0.0), 1.0, preview_state),
+    };
     draw_display_frame(&painter, display, project.display.shape, background, rect);
-
-    studio.canvas.nodes = node_infos(&layout);
-    drop(layout);
+    studio.canvas.nodes = nodes;
 
     let to_display = |p: Pos2| -> (i32, i32) {
         let d = (p - origin) / zoom;
@@ -644,6 +670,17 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
     let Some(sim) = &mut studio.simulation else { return };
     ui.toggle_value(&mut sim.record, format!("⏺ {}", tr("Record")))
         .on_hover_text(tr("Shows the pointer and every click, for screen recordings"));
+    if sim.has_live_values() {
+        egui::ComboBox::from_id_salt("sim_live")
+            .selected_text(format!("{}: {}", tr("Live data"), tr(sim.live_mode.label())))
+            .show_ui(ui, |ui| {
+                for mode in crate::simulator::LiveMode::ALL {
+                    ui.selectable_value(&mut sim.live_mode, mode, tr(mode.label()));
+                }
+            })
+            .response
+            .on_hover_text(tr("Moves arcs, bars, sliders, meters and numeric labels; Maximum shows the widest values"));
+    }
     if ui.button("↺").on_hover_text(tr("Restart the simulation with the current project")).clicked() {
         let screen = sim.screen;
         let record = sim.record;
