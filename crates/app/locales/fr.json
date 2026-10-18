@@ -689,6 +689,7 @@
   "The widget cannot be moved there.": "Le widget ne peut pas être déplacé ici.",
   "Theme": "Thème",
   "Theme (lv_theme_default)": "Thème (lv_theme_default)",
+  "Themes": "Thèmes",
   "These asset files were not found and could not be copied into the project's assets folder:": "Ces fichiers de ressources sont introuvables et n'ont pas pu être copiés dans le dossier assets du projet :",
   "These characters are not drawn on the device. Add them to the font's ranges or symbols in the Fonts panel.": "Ces caractères ne sont pas dessinés sur l'appareil. Ajoutez-les aux plages ou symboles de la police dans le panneau Polices.",
   "Thinking… {} s": "Réflexion… {} s",

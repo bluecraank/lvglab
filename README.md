@@ -77,7 +77,8 @@ ready-to-use library for PlatformIO or the Arduino IDE.
   to a theme color follow `ui_theme_set()` at runtime.
 - **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.
 - Multi language UI (English, German, Spanish, French), light and dark appearance.
-- Project settings: LVGL version, resolution (with presets), round or rectangular display, theme.
+- Project settings: LVGL version, resolution (with presets), round or rectangular display.
+- **Themes** tab next to the parameters: lv_theme_default (dark or light, primary and secondary color) and the color themes.
 
 **Export**
 

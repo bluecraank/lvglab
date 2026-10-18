@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, ViewportCommand};
-use egui_dock::{DockArea, DockState, NodeIndex, TabViewer};
+use egui_dock::{DockArea, DockState, NodeIndex, TabIndex, TabViewer};
 use lvglab_model::flags::StateMask;
 use lvglab_model::{Project, Widget, WidgetId};
 
@@ -19,7 +19,9 @@ use crate::panels::{self, Panel};
 use crate::settings::{AppSettings, STORAGE_KEY};
 use crate::visuals;
 
-const DOCK_KEY: &str = "lvglab.dock.v2";
+const DOCK_KEY: &str = "lvglab.dock.v3";
+/// Layouts saved before the Themes tab existed.
+const DOCK_KEY_V2: &str = "lvglab.dock.v2";
 
 /// A list of messages shown in a dialog (import/export results, errors).
 pub struct Report {
@@ -259,7 +261,14 @@ impl StudioApp {
         cc.egui_ctx.set_zoom_factor(settings.ui_scale);
         let mut dock = cc
             .storage
-            .and_then(|s| eframe::get_value::<DockState<Panel>>(s, DOCK_KEY))
+            .and_then(|s| {
+                eframe::get_value::<DockState<Panel>>(s, DOCK_KEY).or_else(|| {
+                    eframe::get_value::<DockState<Panel>>(s, DOCK_KEY_V2).map(|mut dock| {
+                        add_themes_tab(&mut dock);
+                        dock
+                    })
+                })
+            })
             .filter(|d| d.find_tab(&Panel::Canvas).is_some())
             .unwrap_or_else(default_layout);
         i18n::set_language(settings.language);
@@ -788,7 +797,7 @@ pub fn default_layout() -> DockState<Panel> {
     let [center, right] = tree.split_right(
         NodeIndex::root(),
         0.76,
-        vec![Panel::Parameters, Panel::Style, Panel::Events, Panel::Assistant],
+        vec![Panel::Parameters, Panel::Themes, Panel::Style, Panel::Events, Panel::Assistant],
     );
     // The fraction is the share of the first (left/top) node of a split.
     let [center, left] = tree.split_left(center, 0.24, vec![Panel::Screens]);
@@ -797,4 +806,14 @@ pub fn default_layout() -> DockState<Panel> {
     tree.split_below(center, 0.82, vec![Panel::Timeline]);
     tree.split_below(right, 0.66, vec![Panel::Fonts, Panel::Images]);
     dock
+}
+
+/// Puts the Themes tab next to the parameters in a layout saved before it existed.
+fn add_themes_tab(dock: &mut DockState<Panel>) {
+    if dock.find_tab(&Panel::Themes).is_some() {
+        return;
+    }
+    if let Some((surface, node, tab)) = dock.find_tab(&Panel::Parameters) {
+        dock[surface][node].insert_tab(TabIndex(tab.0 + 1), Panel::Themes);
+    }
 }

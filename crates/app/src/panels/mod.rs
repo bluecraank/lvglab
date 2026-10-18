@@ -9,6 +9,7 @@ mod palette;
 mod parameters;
 mod screens;
 mod style;
+mod themes;
 mod timeline;
 
 pub use fonts::relative as relative_path;
@@ -25,6 +26,7 @@ pub enum Panel {
     Layers,
     Widgets,
     Parameters,
+    Themes,
     Style,
     Events,
     Timeline,
@@ -34,12 +36,13 @@ pub enum Panel {
 }
 
 impl Panel {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Canvas,
         Self::Screens,
         Self::Layers,
         Self::Widgets,
         Self::Parameters,
+        Self::Themes,
         Self::Style,
         Self::Events,
         Self::Timeline,
@@ -55,6 +58,7 @@ impl Panel {
             Self::Layers => "Layers",
             Self::Widgets => "Widgets",
             Self::Parameters => "Parameters",
+            Self::Themes => "Themes",
             Self::Style => "Style",
             Self::Events => "Events",
             Self::Timeline => "Timeline",
@@ -72,6 +76,7 @@ pub fn show(panel: Panel, ui: &mut egui::Ui, studio: &mut Studio) {
         Panel::Layers => layers::show(ui, studio),
         Panel::Widgets => palette::show(ui, studio),
         Panel::Parameters => parameters::show(ui, studio),
+        Panel::Themes => themes::show(ui, studio),
         Panel::Style => style::show(ui, studio),
         Panel::Events => events::show(ui, studio),
         Panel::Timeline => timeline::show(ui, studio),
