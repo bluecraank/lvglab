@@ -56,6 +56,8 @@ pub struct Studio {
     pub assistant: crate::assistant::Assistant,
     /// Running simulation of the project on the canvas.
     pub simulation: Option<crate::simulator::Simulation>,
+    /// Image header cache of the memory estimate.
+    pub stats_cache: crate::stats::StatsCache,
     /// Further selected widgets (Ctrl+click), for aligning.
     pub extra_selection: Vec<WidgetId>,
     /// GIF recording of the simulation.
@@ -167,6 +169,7 @@ impl Studio {
             simulation: None,
             recorder: None,
             extra_selection: Vec::new(),
+            stats_cache: crate::stats::StatsCache::default(),
             gif_jobs: Vec::new(),
         }
     }
@@ -206,6 +209,33 @@ impl Studio {
         self.screen = id;
         self.select(Some(id));
     }
+}
+
+/// Memory estimate and widget counts in the toolbar.
+fn stats_label(ui: &mut egui::Ui, studio: &mut Studio) {
+    use crate::stats::format_bytes;
+    let dir = studio.doc.dir().map(std::path::Path::to_path_buf);
+    let stats = crate::stats::compute(&studio.doc.project, dir.as_deref(), studio.screen, &mut studio.stats_cache);
+    let text = crate::i18n::trf(
+        "RAM ~{} · Flash ~{} · {} / {} widgets",
+        &[&format_bytes(stats.ram), &format_bytes(stats.flash()), &stats.widgets_screen, &stats.widgets_total],
+    );
+    let details = crate::i18n::trf(
+        "Estimate of the exported UI.
+RAM after ui_init(): {} (LVGL objects and local styles; temporary screens count once).
+Flash: {} images, {} fonts, {} code.
+Widgets: {} on this screen, {} on all screens.
+Not included: display buffers, LVGL and the rest of the firmware.",
+        &[
+            &format_bytes(stats.ram),
+            &format_bytes(stats.flash_images),
+            &format_bytes(stats.flash_fonts),
+            &format_bytes(stats.flash_code),
+            &stats.widgets_screen,
+            &stats.widgets_total,
+        ],
+    );
+    crate::widgets::muted(ui, text).on_hover_text(details);
 }
 
 pub struct StudioApp {
@@ -368,6 +398,8 @@ impl StudioApp {
                         s.show_project_settings = true;
                     }
                     ui.label(egui::RichText::new(s.doc.title()).strong());
+                    ui.separator();
+                    stats_label(ui, s);
                 });
             });
             ui.add_space(2.0);

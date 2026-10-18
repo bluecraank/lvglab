@@ -14,6 +14,7 @@ mod panels;
 mod recorder;
 mod settings;
 mod simulator;
+mod stats;
 mod visuals;
 mod widgets;
 

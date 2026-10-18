@@ -71,6 +71,8 @@ ready-to-use library for PlatformIO or the Arduino IDE.
   and numeric labels (or shows their widest values).
 - **Components**: reusable widget groups, edited like a screen and placed with the *Component* widget.
   Exported like SquareLine (`ui_<Name>_create()`, `ui_comp_get_child()`, `UI_COMP_<NAME>_<CHILD>`, create hooks).
+- **Statistics** in the toolbar: estimated RAM and flash of the export, widgets on the current screen and in total.
+- **Font check**: warns when a text uses characters its font does not contain.
 - **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound
   to a theme color follow `ui_theme_set()` at runtime.
 - **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.

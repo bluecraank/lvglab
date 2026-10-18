@@ -68,12 +68,7 @@ pub fn missing_glyphs(project: &Project) -> Vec<MissingGlyphs> {
     out
 }
 
-fn visit(
-    project: &Project,
-    resolver: &StyleResolver<'_>,
-    path: &mut Vec<&Widget>,
-    out: &mut Vec<MissingGlyphs>,
-) {
+fn visit(project: &Project, resolver: &StyleResolver<'_>, path: &mut Vec<&Widget>, out: &mut Vec<MissingGlyphs>) {
     if let Some(missing) = check(project, resolver, path) {
         out.push(missing);
     }
