@@ -48,25 +48,55 @@ pub fn code_points(ranges: &str, symbols: &str) -> Result<Vec<u32>, FontError> {
     Ok(points)
 }
 
-/// Vertical metrics of an LVGL font: `line_height` (ascent − descent, no
-/// line gap) and `base_line` (distance from the bottom to the baseline).
+/// Vertical metrics of an LVGL font: `line_height` and `base_line` (distance
+/// from the bottom of the line to the baseline).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LineMetrics {
     pub line_height: i32,
     pub base_line: i32,
 }
 
-fn line_metrics(font: &fontdue::Font, size: f32) -> LineMetrics {
+/// Like `lv_font_conv` (and so SquareLine Studio), the line spans the
+/// bitmaps of the glyphs the font contains: from the highest top to the
+/// lowest bottom, with the baseline above that bottom. Fonts without any
+/// visible glyph fall back to the font's ascent and descent.
+fn line_metrics(font: &fontdue::Font, size: f32, points: &[u32]) -> LineMetrics {
+    let (mut top, mut bottom) = (i32::MIN, i32::MAX);
+    for ch in points.iter().filter_map(|&cp| char::from_u32(cp)) {
+        if font.lookup_glyph_index(ch) == 0 {
+            continue;
+        }
+        let m = font.metrics(ch, size);
+        if m.width == 0 || m.height == 0 {
+            continue;
+        }
+        let y = m.ymin.clamp(-128, 127);
+        top = top.max(y + m.height.min(255) as i32);
+        bottom = bottom.min(y);
+    }
+    if top > bottom {
+        return LineMetrics { line_height: top - bottom, base_line: -bottom };
+    }
     let (ascent, descent) = font.horizontal_line_metrics(size).map_or((size, 0.0), |m| (m.ascent, m.descent));
     LineMetrics { line_height: (ascent - descent).ceil() as i32, base_line: (-descent).ceil() as i32 }
 }
 
-/// The metrics LVGL will use for a TTF/OTF rendered at `size` px, e.g. for
-/// an editor preview that matches the device.
-pub fn metrics_from_bytes(bytes: &[u8], size: u16) -> Option<LineMetrics> {
+/// The metrics LVGL will use for a TTF/OTF with the given character ranges
+/// at `size` px, e.g. for an editor preview that matches the device.
+pub fn metrics_from_bytes(bytes: &[u8], size: u16, ranges: &str, symbols: &str) -> Option<LineMetrics> {
     let size = f32::from(size.max(1));
     let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings { scale: size, ..Default::default() }).ok()?;
-    Some(line_metrics(&font, size))
+    let points = code_points(ranges, symbols).ok()?;
+    Some(line_metrics(&font, size, &points))
+}
+
+/// Ascent and descent (negative) of a TTF/OTF in fractions of the em, as
+/// LVGL's converter uses them.
+pub fn em_metrics(bytes: &[u8]) -> Option<(f32, f32)> {
+    const PX: f32 = 1000.0;
+    let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings { scale: PX, ..Default::default() }).ok()?;
+    let m = font.horizontal_line_metrics(PX)?;
+    Some((m.ascent / PX, m.descent / PX))
 }
 
 struct Glyph {
@@ -135,7 +165,7 @@ fn render(
         });
         included.push(cp);
     }
-    let LineMetrics { line_height, base_line } = line_metrics(font, size);
+    let LineMetrics { line_height, base_line } = line_metrics(font, size, &included);
 
     let mut out = String::new();
     out.push_str(header);
