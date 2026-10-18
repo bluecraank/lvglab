@@ -3,6 +3,7 @@
 //! program. LVGL draws it in software into a buffer and the editor shows that
 //! buffer.
 
+mod assets;
 mod ffi;
 mod interp;
 
@@ -58,6 +59,17 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
         let mut interpreter = Interpreter::new();
         for file in output.files.iter().filter(|f| is_code(&f.path)) {
             interpreter.load(file.contents_str());
+        }
+        let sources: Vec<&str> = output
+            .files
+            .iter()
+            .filter(|f| f.path.rsplit('/').next().is_some_and(|n| n.starts_with("ui_img_") && n.ends_with(".c")))
+            .map(lvglab_codegen::GeneratedFile::contents_str)
+            .collect();
+        let mut images = assets::parse_images(&sources, project.export.swap_bytes);
+        for image in &mut images {
+            let address = image.address();
+            interpreter.add_symbol(&image.name, address);
         }
         interpreter.only_screen = Some(screen_init);
         interpreter.call("ui_init", &[]);
@@ -137,5 +149,32 @@ mod tests {
         assert_ne!(at(180, 90), [255, 0, 0]);
         // A second render works as well.
         assert!(render_screen(&project(), 0, None).is_ok());
+    }
+
+    #[test]
+    fn component_instances_render_through_their_generated_functions() {
+        let mut p = project();
+        let component = p.add_component();
+        let root = p.widget(component).unwrap().children[0].id;
+        p.widget_mut(root).unwrap().styles.set(
+            "main",
+            StateMask::DEFAULT,
+            StyleProp::BgColor,
+            StyleValue::Color(Color::from_hex(0x00FF00)),
+        );
+        p.widget_mut(root).unwrap().styles.set("main", StateMask::DEFAULT, StyleProp::BgOpa, StyleValue::Int(255));
+        let name = p.widget(component).unwrap().name.clone();
+        let screen = p.screens[0].id;
+        let mut instance = p.new_widget(WidgetKind::Component);
+        instance.set_prop("component", lvglab_model::prop::PropValue::Text(name));
+        instance.geometry.align = Align::TopLeft;
+        instance.geometry.x = Coord::px(10);
+        instance.geometry.y = Coord::px(70);
+        instance.geometry.width = Coord::px(60);
+        instance.geometry.height = Coord::px(20);
+        p.insert(screen, 1, instance).unwrap();
+        let frame = render_screen(&p, 0, None).expect("rendered");
+        let i = (80 * 200 + 20) * 4;
+        assert_eq!(&frame.rgba[i..i + 3], &[0, 255, 0], "the component is green; skipped: {:?}", frame.skipped);
     }
 }

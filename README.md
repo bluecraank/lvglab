@@ -69,6 +69,11 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Screenshots** (File → Export screenshots…): a PNG of every screen at the resolution of the display, without
   selection frames; round displays get a transparent corner. `lvglab project.lvglab --export-screenshots <folder>`
   does the same from the command line.
+- **LVGL preview** (Edit → Preferences → Canvas → Preview): instead of the editor's own drawing, LVGL itself
+  renders the screen. LVGLab runs the C code of the export in a small interpreter against LVGL 8.3 that is
+  compiled into the program, so the canvas shows exactly what the device draws (fonts, anti-aliasing, themes,
+  components, images). Selection frames work as usual. Projects for LVGL 9, the simulator and custom fonts
+  still use the editor's drawing. The default stays the fast editor renderer.
 - **Overview** button in the canvas bar: all screens side by side at a glance; click one to open it.
   The **Hidden** toggle next to Guides switches the orange outline of hidden widgets on and off.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
@@ -154,7 +159,7 @@ Ready-made builds are on the [releases page](https://github.com/bluecraank/lvgla
 
 ### Build from source
 
-Requirements: [Rust](https://rustup.rs) 1.85 or newer.
+Requirements: [Rust](https://rustup.rs) 1.85 or newer and a C compiler (the LVGL preview compiles LVGL 8.3).
 
 ```sh
 git clone https://github.com/bluecraank/lvglab
@@ -218,7 +223,7 @@ Use the **View** menu to show hidden panels again or to reset the layout.
 | Group | Settings |
 |---|---|
 | General | Language, appearance (system/dark/light), UI scale (60–200 %), open the last project on start |
-| Canvas | Background (like the editor, dark, light, checkerboard), grid size, show grid, snap to grid, outline all widgets, dashed outlines for hidden widgets, name and size of the selection, Shift + arrow step |
+| Canvas | Background (like the editor, dark, light, checkerboard), preview renderer (editor or LVGL), grid size, show grid, snap to grid, outline all widgets, dashed outlines for hidden widgets, name and size of the selection, Shift + arrow step |
 | Editing | Timeline length, autosave interval (default 2 min) and target: the project file itself or a backup copy `<name>.backup.lvglab` |
 | Export | Open the folder after exporting |
 
@@ -499,6 +504,7 @@ crates/
 ├── spj       lvglab-spj      SquareLine Studio importer
 ├── codegen   lvglab-codegen  C code, image and font conversion, library export
 ├── ai        lvglab-ai     AI assistant: prompt, Claude API client, design schema and validation
+├── lvgl      lvglab-lvgl   LVGL 8.3 (vendored) plus an interpreter for the generated C: the LVGL preview
 └── app       lvglab  egui desktop application
 ```
 
@@ -514,7 +520,7 @@ Design principles:
   conservative step, which makes the generator easy to test.
 - **Commands and a single mutation point** in the app. Panels queue commands; the frame executes them, and
   the timeline records the resulting state.
-- **No `unsafe`**: the workspace forbids it.
+- **No `unsafe`** outside `crates/lvgl`: the workspace forbids it, only the wrapper of the C library needs it.
 
 ## Development
 
