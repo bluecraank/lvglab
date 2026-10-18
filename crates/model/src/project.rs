@@ -351,21 +351,71 @@ impl Project {
     }
 
     /// Puts all top level objects of a component into one container, because
-    /// an instance is made of a single object. The container has the size of
-    /// the display and does not move the objects; resize it as needed.
+    /// an instance is made of a single object. The container is as large as
+    /// the objects together, and the objects sit inside it at fixed offsets
+    /// from its top left corner, so it can be resized (e.g. to a height of
+    /// 80 px) without the content moving out of view.
     pub fn group_component_roots(&mut self, id: WidgetId) -> bool {
+        use crate::coord::{Align, Coord};
+        use crate::layout::{Layout, Measure};
+        use crate::theme::{StyleResolver, Theme};
+
+        /// Text is approximated; only the bounds of the top level objects matter.
+        struct Rough;
+        impl Measure for Rough {
+            fn text_size(&self, text: &str, font: &str, _: i32, _: i32, _: Option<i32>) -> (i32, i32) {
+                let size: i32 = font.chars().filter(char::is_ascii_digit).collect::<String>().parse().unwrap_or(14);
+                let lines = text.lines().count().max(1) as i32;
+                let longest = text.lines().map(|l| l.chars().count()).max().unwrap_or(0) as i32;
+                (longest * size * 55 / 100, lines * size * 12 / 10)
+            }
+            fn line_height(&self, font: &str) -> i32 {
+                self.text_size("x", font, 0, 0, None).1
+            }
+            fn image_size(&self, _: &str) -> Option<(i32, i32)> {
+                Some((50, 50))
+            }
+        }
+
         let Some(index) = self.components.iter().position(|c| c.id == id) else { return false };
         if self.components[index].children.len() < 2 {
             return false;
         }
+        // Where the objects are on the canvas they were placed on.
+        let (width, height) = (self.display.width as i32, self.display.height as i32);
+        let theme = Theme::of(self);
+        let resolver = StyleResolver::new(&theme).with_color_themes(&self.color_themes);
+        let expanded = self.expand_instances(&self.components[index]);
+        let layout = Layout::compute(&expanded, width, height, &resolver, &Rough, None);
+        let rects: Vec<(WidgetId, crate::layout::Rect)> =
+            layout.nodes.iter().filter(|n| n.parent == Some(0)).map(|n| (n.widget.id, n.rect)).collect();
+        let left = rects.iter().map(|(_, r)| r.x).min().unwrap_or(0);
+        let top = rects.iter().map(|(_, r)| r.y).min().unwrap_or(0);
+        let right = rects.iter().map(|(_, r)| r.x + r.w).max().unwrap_or(width);
+        let bottom = rects.iter().map(|(_, r)| r.y + r.h).max().unwrap_or(height);
+
         let name = self.unique_name(&format!("{}Content", self.components[index].name));
         let mut group = Widget::new(WidgetKind::Container, self.alloc_id(), name);
-        group.geometry.align = crate::coord::Align::TopLeft;
-        group.geometry.width = crate::coord::Coord::px(self.display.width as i32);
-        group.geometry.height = crate::coord::Coord::px(self.display.height as i32);
+        group.geometry.align = Align::TopLeft;
+        group.geometry.width = Coord::px((right - left).max(1));
+        group.geometry.height = Coord::px((bottom - top).max(1));
         group.set_flag(crate::flags::ObjFlag::Clickable, false);
         group.set_flag(crate::flags::ObjFlag::Scrollable, false);
         group.children = std::mem::take(&mut self.components[index].children);
+        for child in &mut group.children {
+            if let Some((_, rect)) = rects.iter().find(|(id, _)| *id == child.id) {
+                child.geometry.align = Align::TopLeft;
+                child.geometry.x = Coord::px(rect.x - left);
+                child.geometry.y = Coord::px(rect.y - top);
+                // Percentages would change with the container; other sizes stay as they are.
+                if child.geometry.width.unit == crate::coord::Unit::Percent {
+                    child.geometry.width = Coord::px(rect.w);
+                }
+                if child.geometry.height.unit == crate::coord::Unit::Percent {
+                    child.geometry.height = Coord::px(rect.h);
+                }
+            }
+        }
         self.components[index].children = vec![group];
         true
     }
@@ -826,8 +876,17 @@ mod tests {
         let root = &p.components[0].children;
         assert_eq!(root.len(), 1);
         assert_eq!((root[0].kind, root[0].children.len()), (WidgetKind::Container, 2));
-        assert_eq!((root[0].geometry.width.value, root[0].geometry.height.value), (600, 450));
         assert!(p.widget(panel_id).is_some(), "the objects keep their ids");
+        // The container is as large as the objects together, which sit at fixed offsets from its corner.
+        let group = &root[0];
+        let (gw, gh) = (group.geometry.width.value, group.geometry.height.value);
+        assert!(gw > 0 && gh > 0 && gw < 600 && gh < 450, "{gw} x {gh}");
+        for child in &group.children {
+            let g = child.geometry;
+            assert_eq!(g.align, crate::coord::Align::TopLeft);
+            assert!(g.x.value >= 0 && g.y.value >= 0, "{child:?}");
+            assert!(g.x.value + g.width.value <= gw && g.y.value + g.height.value <= gh, "inside the container");
+        }
         assert!(!p.group_component_roots(component), "a single object is left alone");
     }
 
