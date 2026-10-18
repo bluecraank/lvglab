@@ -22,7 +22,6 @@ pub struct SpjInfo {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub shape: Option<String>,
-    pub board: Option<String>,
     pub lvgl_version: Option<String>,
     pub theme_dark: Option<bool>,
     pub theme_color1: Option<i64>,

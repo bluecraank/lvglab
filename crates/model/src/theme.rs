@@ -1,12 +1,12 @@
-//! An approximation of LVGL 8.3's default theme (`lv_theme_default`) and the
-//! style resolution used by the editor preview: local style → theme →
-//! inherited from the parent.
+//! An approximation of LVGL's default theme (`lv_theme_default`) of LVGL 8.3
+//! and 9 and the style resolution used by the editor preview: local style →
+//! theme → inherited from the parent.
 
 use crate::color::{Color, Palette};
 use crate::color_theme::ColorThemes;
 use crate::coord::Coord;
 use crate::flags::{ObjState, StateMask};
-use crate::project::{DisplaySettings, ThemeSettings};
+use crate::project::{DisplaySettings, LvglVersion, Project, ThemeSettings};
 use crate::style::{StyleProp, StyleValue};
 use crate::widget::{Widget, WidgetKind};
 
@@ -22,6 +22,9 @@ const fn dpx(n: i32) -> i32 {
 /// Concrete values of the default theme for one project.
 #[derive(Clone, Debug)]
 pub struct Theme {
+    /// The theme and the widgets of LVGL 9 (meter as scale, message box with
+    /// header and footer, ...).
+    pub lvgl9: bool,
     pub dark: bool,
     pub primary: Color,
     pub secondary: Color,
@@ -36,8 +39,14 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub fn new(settings: &ThemeSettings, display: &DisplaySettings) -> Self {
-        let width = display.width.max(display.height) as i32;
+    pub fn of(project: &Project) -> Self {
+        Self::new(&project.theme, &project.display, project.lvgl_version)
+    }
+
+    pub fn new(settings: &ThemeSettings, display: &DisplaySettings, version: LvglVersion) -> Self {
+        let lvgl9 = version.is_v9();
+        // LVGL 8 sizes the theme by the horizontal resolution, LVGL 9 by the longer side.
+        let width = if lvgl9 { display.width.max(display.height) } else { display.width } as i32;
         let (small, large) = (width <= 320, width > 720);
         let pick = |s: i32, m: i32, l: i32| {
             dpx(if large {
@@ -55,6 +64,7 @@ impl Theme {
             (grey.lighten(230), Color::WHITE, grey.darken(200), grey.lighten(205))
         };
         Self {
+            lvgl9,
             dark: settings.dark,
             primary: settings.primary.main(),
             secondary: settings.secondary.main(),
@@ -110,6 +120,27 @@ impl Theme {
         };
 
         let value = match (kind, slot) {
+            // LVGL 9: a message box has no padding; header, content and footer are children.
+            (WidgetKind::Msgbox, "main") if self.lvgl9 => match prop {
+                P::PadRow | P::PadColumn => int(0),
+                p if pad(p, 0).is_some() => int(0),
+                p => card(p),
+            },
+            (WidgetKind::Msgbox, "buttons") if self.lvgl9 => match prop {
+                P::BgColor => color(self.primary),
+                P::BgOpa => int(255),
+                P::Radius => int(self.radius),
+                P::TextColor => color(Color::WHITE),
+                _ => None,
+            },
+            // LVGL 9 exports a meter as lv_scale, which has no background.
+            (WidgetKind::Meter, "main") if self.lvgl9 => match prop {
+                P::TextColor | P::LineColor | P::ArcColor => color(self.text),
+                P::LineWidth | P::ArcWidth => int(dpx(2)),
+                _ => None,
+            },
+            // LVGL 9 has no color wheel; the export creates a plain object.
+            (WidgetKind::Colorwheel, "main") if self.lvgl9 => card(prop),
             (WidgetKind::Screen, "main") => match prop {
                 P::BgColor => color(self.screen),
                 P::BgOpa => int(255),
@@ -157,9 +188,9 @@ impl Theme {
                 P::PadTop | P::PadBottom => int(self.pad_small),
                 P::PadRow | P::PadColumn => int(self.pad_small),
                 P::ShadowWidth if !self.dark => int(dpx(3)),
-                P::ShadowOfsY if !self.dark => int(dpx(4)),
-                P::ShadowColor if !self.dark => color(self.grey.darken(150)),
-                P::ShadowOpa if !self.dark => int(76),
+                P::ShadowOfsY if !self.dark => int(dpx(3)),
+                P::ShadowColor if !self.dark => color(Palette::Grey.main()),
+                P::ShadowOpa if !self.dark => int(128),
                 _ => None,
             },
             (WidgetKind::Slider | WidgetKind::Bar, "main") => circle_bg(self.primary, 51, prop),
@@ -351,7 +382,11 @@ mod tests {
     use crate::widget::WidgetId;
 
     fn theme(dark: bool) -> Theme {
-        Theme::new(&ThemeSettings { dark, ..ThemeSettings::default() }, &DisplaySettings::default())
+        Theme::new(
+            &ThemeSettings { dark, ..ThemeSettings::default() },
+            &DisplaySettings::default(),
+            LvglVersion::default(),
+        )
     }
 
     #[test]
@@ -366,6 +401,21 @@ mod tests {
             theme.value(WidgetKind::Button, "main", checked, StyleProp::BgColor),
             Some(StyleValue::Color(Palette::Red.main()))
         );
+    }
+
+    #[test]
+    fn lvgl_9_differences() {
+        // 240 × 400: LVGL 8 sizes the theme by the width (small), LVGL 9 by the longer side (medium).
+        let display = DisplaySettings { width: 240, height: 400, ..DisplaySettings::default() };
+        let v8 = Theme::new(&ThemeSettings::default(), &display, LvglVersion::V8_3_11);
+        let v9 = Theme::new(&ThemeSettings::default(), &display, LvglVersion::V9_6_0);
+        assert_eq!((v8.pad_def, v9.pad_def), (dpx(16), dpx(20)));
+        let pad = |t: &Theme| t.value(WidgetKind::Msgbox, "main", StateMask::DEFAULT, StyleProp::PadTop);
+        assert_eq!(pad(&v8), Some(StyleValue::Int(v8.pad_def)));
+        assert_eq!(pad(&v9), Some(StyleValue::Int(0)));
+        let meter_bg = |t: &Theme| t.value(WidgetKind::Meter, "main", StateMask::DEFAULT, StyleProp::BgOpa);
+        assert_eq!(meter_bg(&v8), Some(StyleValue::Int(255)));
+        assert_eq!(meter_bg(&v9), None);
     }
 
     #[test]

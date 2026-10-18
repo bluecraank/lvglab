@@ -1,4 +1,4 @@
-//! LVGLab: a UI designer for LVGL 8 on ESP32 with TFT_eSPI.
+//! LVGLab: a UI designer for LVGL 8 and 9 on ESP32.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

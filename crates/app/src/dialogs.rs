@@ -35,6 +35,7 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
 fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
     let mut open = studio.show_project_settings;
     let dir = studio.doc.dir().map(std::path::Path::to_path_buf);
+    let version = studio.doc.project.lvgl_version;
     egui::Window::new(tr("Project settings"))
         .open(&mut open)
         .resizable(false)
@@ -48,7 +49,11 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
                     label(ui, tr("Name"), "");
                     ui.text_edit_singleline(&mut p.name);
                     ui.end_row();
-                    label(ui, tr("LVGL version"), tr("The generated code targets LVGL 8.3."));
+                    label(
+                        ui,
+                        tr("LVGL version"),
+                        tr("The export uses the API of the selected release. LVGL 9 lacks the meter and the color wheel; the export reports what it changes."),
+                    );
                     widgets::choice(ui, "lvgl_version", &mut p.lvgl_version, LvglVersion::ALL, LvglVersion::label);
                     ui.end_row();
                 });
@@ -111,8 +116,17 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
                     );
                     ui.checkbox(&mut p.export.multilang, tr("Translate with lv_i18n"));
                     ui.end_row();
-                    label(ui, tr("Byte swap"), tr("Must match LV_COLOR_16_SWAP in lv_conf.h (TFT_eSPI usually uses 1)."));
-                    ui.checkbox(&mut p.export.swap_bytes, "LV_COLOR_16_SWAP 1");
+                    if p.lvgl_version.is_v9() {
+                        label(
+                            ui,
+                            tr("Byte swap"),
+                            tr("LVGL 9 swaps the bytes in the flush callback of the display driver, e.g. with lv_draw_sw_rgb565_swap()."),
+                        );
+                        muted(ui, tr("In the display driver"));
+                    } else {
+                        label(ui, tr("Byte swap"), tr("Must match LV_COLOR_16_SWAP in lv_conf.h."));
+                        ui.checkbox(&mut p.export.swap_bytes, "LV_COLOR_16_SWAP 1");
+                    }
                     ui.end_row();
                     label(
                         ui,
@@ -134,7 +148,11 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
                 }
                 muted(
                     ui,
-                    tr("Requirements in your lv_conf.h: LV_COLOR_DEPTH 16 and the Montserrat fonts the UI uses."),
+                    if p.lvgl_version.is_v9() {
+                        tr("Requirements in your lv_conf.h: the Montserrat fonts the UI uses.")
+                    } else {
+                        tr("Requirements in your lv_conf.h: LV_COLOR_DEPTH 16 and the Montserrat fonts the UI uses.")
+                    },
                 );
             });
             if p.display != before {
@@ -142,6 +160,9 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
             }
         });
     studio.show_project_settings = open;
+    if studio.doc.project.lvgl_version != version {
+        studio.remove_unsupported(true);
+    }
 }
 
 fn preferences(ctx: &egui::Context, studio: &mut Studio) {
@@ -314,19 +335,12 @@ fn about(ctx: &egui::Context, studio: &mut Studio) {
     }
     let title = format!("LVGLab {}", env!("CARGO_PKG_VERSION"));
     let actions = [Action::primary(tr("Close"))];
-    let choice = modal::show(
-        ctx,
-        "about",
-        Tone::Info,
-        &title,
-        tr("UI designer for LVGL 8 on ESP32 with TFT_eSPI."),
-        &actions,
-        |ui| {
+    let choice =
+        modal::show(ctx, "about", Tone::Info, &title, tr("UI designer for LVGL 8 and 9 on ESP32."), &actions, |ui| {
             ui.add_space(10.0);
             muted(ui, tr("Imports SquareLine Studio projects. Not affiliated with LVGL or SquareLine."));
             ui.hyperlink(env!("CARGO_PKG_REPOSITORY"));
-        },
-    );
+        });
     if choice.is_some() || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         studio.show_about = false;
     }

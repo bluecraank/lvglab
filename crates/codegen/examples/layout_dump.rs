@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let target = project.all_widgets().into_iter().find(|w| w.name == name).ok_or("widget not found")?.id;
     let screen = project.screen_of(target).ok_or("no screen")?;
-    let theme = Theme::new(&project.theme, &project.display);
+    let theme = Theme::of(&project);
     let resolver = StyleResolver::new(&theme);
     let (w, h) = (project.display.width as i32, project.display.height as i32);
     let layout = Layout::compute(screen, w, h, &resolver, &RoughMeasure, Some(target));

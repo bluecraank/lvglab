@@ -10,6 +10,7 @@ mod macros;
 pub mod catalog;
 pub mod color;
 pub mod color_theme;
+pub mod compat;
 pub mod coord;
 pub mod event;
 pub mod flags;

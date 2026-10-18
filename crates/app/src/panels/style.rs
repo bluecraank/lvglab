@@ -1,7 +1,9 @@
 //! Style editor: local style properties per part and state.
 
 use eframe::egui::{self, RichText};
+use lvglab_model::compat;
 use lvglab_model::flags::{ObjState, StateMask};
+use lvglab_model::project::LvglVersion;
 use lvglab_model::style::{StyleGroup, StyleKind, StyleProp, StyleValue};
 use lvglab_model::{Project, Widget};
 
@@ -28,10 +30,15 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let Some(original) = studio.selected_widget().cloned() else { return };
     let mut widget = original.clone();
     let def = widget.def();
+    let version = studio.doc.project.lvgl_version;
+    let slots: Vec<_> = def.slots.iter().filter(|s| compat::slot_supported(version, widget.kind, s)).collect();
+    if !slots.iter().any(|s| s.key == studio.style_slot) {
+        studio.style_slot = "main".to_owned();
+    }
 
     ui.label(RichText::new(tr("Part")).small().strong());
     ui.horizontal_wrapped(|ui| {
-        for slot in def.slots {
+        for slot in slots {
             let used = !widget.styles.states_of(slot.key).is_empty();
             let text = if used { format!("{} •", tr(slot.label)) } else { tr(slot.label).to_owned() };
             if ui.selectable_label(studio.style_slot == slot.key, text).clicked() {
@@ -89,7 +96,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     }
 
     ui.separator();
-    add_property(ui, &mut widget, &slot, state);
+    add_property(ui, &mut widget, &slot, state, version);
     ui.horizontal_wrapped(|ui| {
         for (name, group) in QUICK {
             if ui.small_button(format!("+ {}", tr(name))).clicked() {
@@ -131,7 +138,7 @@ fn state_picker(ui: &mut egui::Ui, mask: &mut StateMask, widget: &Widget, slot: 
     });
 }
 
-fn add_property(ui: &mut egui::Ui, widget: &mut Widget, slot: &str, state: StateMask) {
+fn add_property(ui: &mut egui::Ui, widget: &mut Widget, slot: &str, state: StateMask, version: LvglVersion) {
     let filter_id = ui.make_persistent_id("style_add_filter");
     let mut filter: String = ui.data_mut(|d| d.get_temp(filter_id).unwrap_or_default());
     egui::ComboBox::from_id_salt("style_add")
@@ -146,6 +153,7 @@ fn add_property(ui: &mut egui::Ui, widget: &mut Widget, slot: &str, state: State
                     .iter()
                     .copied()
                     .filter(|p| p.group() == group && widget.styles.get(slot, state, *p).is_none())
+                    .filter(|p| compat::style_supported(version, *p))
                     .filter(|p| {
                         needle.is_empty()
                             || p.name().contains(&needle)
@@ -255,7 +263,15 @@ fn plain_value_editor(ui: &mut egui::Ui, project: &Project, prop: StyleProp, val
         }
         (StyleKind::Color, StyleValue::Color(c)) => ui.horizontal(|ui| widgets::color(ui, c)).inner,
         (StyleKind::Bool, StyleValue::Bool(b)) => ui.checkbox(b, "").changed(),
-        (StyleKind::Enum(options), StyleValue::Enum(e)) => widgets::options(ui, id, e, options),
+        (StyleKind::Enum(options), StyleValue::Enum(e)) => {
+            let version = project.lvgl_version;
+            let options: Vec<_> = options
+                .iter()
+                .copied()
+                .filter(|o| compat::style_value_supported(version, &StyleValue::Enum(o.c.to_owned())))
+                .collect();
+            widgets::options(ui, id, e, &options)
+        }
         (StyleKind::Font, StyleValue::Font(f)) => widgets::font_ref(ui, id, f, project),
         (StyleKind::Image, StyleValue::Image(i)) => widgets::image_ref(ui, id, i, project),
         (_, value) => {

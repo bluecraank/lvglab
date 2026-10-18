@@ -16,12 +16,14 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use lvglab_model::catalog::WidgetDef;
+use lvglab_model::compat;
 use lvglab_model::event::{Action, EventHandler, ModifyOp};
 use lvglab_model::layout::pixel_size;
 use lvglab_model::prop::{Emit, EmitWhen, PropDef, PropKind, PropValue};
-use lvglab_model::style::{StyleProp, StyleValue};
+use lvglab_model::style::{Part, StyleProp, StyleValue};
 use lvglab_model::{Align, Coord, Project, Unit, Widget, WidgetId, WidgetKind};
 
+use crate::api::Target;
 use crate::naming::{Naming, c_ident};
 use crate::output::{GeneratedFile, MARKER, WritePolicy};
 use crate::template::{Formatted, Scope, c_string, format_prop, format_style, lines};
@@ -103,8 +105,15 @@ fn header_file(project: &Project, file: &str, body: &str) -> String {
 
 pub fn generate(project: &Project, assets: &AssetDecls) -> UiSources {
     let names = Naming::new(project);
-    let mut ctx =
-        Context { project, names: &names, warnings: Vec::new(), functions: BTreeSet::new(), cross_refs: Vec::new() };
+    let target = Target::of(project);
+    let mut ctx = Context {
+        project,
+        names: &names,
+        target,
+        warnings: Vec::new(),
+        functions: BTreeSet::new(),
+        cross_refs: Vec::new(),
+    };
     let mut files = Vec::new();
     for screen in &project.screens {
         let generated = ScreenGen::new(&mut ctx, screen).run();
@@ -145,12 +154,16 @@ pub fn generate(project: &Project, assets: &AssetDecls) -> UiSources {
         files.push(text(names.file("comp_hook.c"), comp_hook_c(project, &names)));
     }
     files.push(GeneratedFile::text(names.file("events.c"), events_c(&names), WritePolicy::KeepExisting));
+    for file in &mut files {
+        file.contents = target.port(file.contents_str()).into_bytes();
+    }
     UiSources { files, warnings: ctx.warnings }
 }
 
 struct Context<'a> {
     project: &'a Project,
     names: &'a Naming,
+    target: Target,
     warnings: Vec<String>,
     /// User functions referenced by "call function" actions.
     functions: BTreeSet<String>,
@@ -158,12 +171,31 @@ struct Context<'a> {
     cross_refs: Vec<String>,
 }
 
-/// True if a creation or post-processing template of `def` uses `key`.
-fn used_in_templates(def: &WidgetDef, key: &str) -> bool {
-    let pattern = format!("{{{key}");
-    [def.create, def.post_create, def.post_props].iter().any(|t| {
-        t.match_indices(&pattern).any(|(i, _)| matches!(t[i + pattern.len()..].chars().next(), Some('}' | '.')))
-    })
+/// The creation and post-processing templates of a widget for the target.
+#[derive(Clone, Copy)]
+struct Templates {
+    create: &'static str,
+    post_create: &'static str,
+    post_props: &'static str,
+}
+
+impl Templates {
+    fn of(def: &WidgetDef, target: Target) -> Self {
+        let v9 = if target.is_v9() { def.v9 } else { lvglab_model::catalog::V9::SAME };
+        Self {
+            create: v9.create.unwrap_or(def.create),
+            post_create: v9.post_create.unwrap_or(def.post_create),
+            post_props: v9.post_props.unwrap_or(def.post_props),
+        }
+    }
+
+    /// True if one of the templates uses `key`.
+    fn uses(self, key: &str) -> bool {
+        let pattern = format!("{{{key}");
+        [self.create, self.post_create, self.post_props].iter().any(|t| {
+            t.match_indices(&pattern).any(|(i, _)| matches!(t[i + pattern.len()..].chars().next(), Some('}' | '.')))
+        })
+    }
 }
 
 fn is_temporary(screen: &Widget) -> bool {
@@ -354,13 +386,17 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
 
     fn widget(&mut self, widget: &'a Widget, parent: &str) {
         let def = widget.def();
+        let templates = Templates::of(def, self.ctx.target);
         let obj = self.ctx.names.var(widget.id).to_owned();
         self.vars.push(obj.clone());
         let scope = self.scope(widget, def, &obj, parent);
+        if self.ctx.target.is_v9() && !def.v9.note.is_empty() {
+            self.ctx.warnings.push(format!("{}: {}", widget.name, def.v9.note));
+        }
 
         self.init.blank();
         self.init.line(&format!("/* {}: {} */", def.name, widget.name));
-        for prop in def.props.iter().filter(|p| used_in_templates(def, p.key)) {
+        for prop in def.props.iter().filter(|p| templates.uses(p.key)) {
             for prelude in &scope.props[prop.key].prelude {
                 self.init.line(prelude);
             }
@@ -376,9 +412,9 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
                     .push(format!("{}: component `{name}` does not exist; an empty object is created", widget.name));
             }
         }
-        self.init.line(&format!("{obj} = {};", scope.expand(def.create)));
-        if !def.post_create.is_empty() {
-            self.init.line(&scope.expand(def.post_create));
+        self.init.line(&format!("{obj} = {};", scope.expand(templates.create)));
+        if !templates.post_create.is_empty() {
+            self.init.line(&scope.expand(templates.post_create));
         }
         if widget.kind != WidgetKind::Screen && !def.managed_geometry {
             self.geometry(widget, &obj);
@@ -408,8 +444,8 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
             self.event_callback(&callback, &widget.events);
             self.callbacks.push(callback);
         }
-        if !def.post_props.is_empty() {
-            self.init.line(&scope.expand(def.post_props));
+        if !templates.post_props.is_empty() {
+            self.init.line(&scope.expand(templates.post_props));
         }
         let child_parent = def.child_parent.map_or_else(|| obj.clone(), |t| scope.expand(t));
         for child in &widget.children {
@@ -462,7 +498,21 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
 
     fn prop(&mut self, widget: &Widget, prop: &'static PropDef, scope: &Scope<'static>, obj: &str) {
         let value = widget.prop(prop.key).unwrap_or_else(|| prop.default_value());
-        let skip = match prop.when {
+        let target = self.ctx.target;
+        let (emit, when) = match widget.def().v9.prop(prop.key).filter(|_| target.is_v9()) {
+            Some(v9) if v9.emit == Emit::None || !target.v9_since(v9.since) => {
+                if value != prop.default_value() {
+                    self.ctx.warnings.push(format!(
+                        "{}: {} is not available in LVGL {}.{} and was skipped",
+                        widget.name, prop.label, target.major, target.minor
+                    ));
+                }
+                return;
+            }
+            Some(v9) => (v9.emit, v9.when),
+            None => (prop.emit, prop.when),
+        };
+        let skip = match when {
             EmitWhen::Always => false,
             EmitWhen::Changed => value == prop.default_value(),
             EmitWhen::NotEmpty => match &value {
@@ -485,12 +535,13 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
             }
             s
         };
-        if prop.emit != Emit::None && !used_in_templates(widget.def(), prop.key) {
+        // Arrays are declared for single statements; loops use the entries directly.
+        if matches!(emit, Emit::Call(_) | Emit::OptionTemplate) && !Templates::of(widget.def(), target).uses(prop.key) {
             for prelude in &formatted.prelude {
                 self.init.line(prelude);
             }
         }
-        match prop.emit {
+        match emit {
             Emit::None => {}
             Emit::Call(template) => {
                 let statement = with_value(&[]).expand(template);
@@ -595,14 +646,38 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
             }
         }
         let names = self.ctx.names;
+        let v9 = self.ctx.target.is_v9();
         for slot in def.slots {
             let target = slot.getter.map_or_else(|| obj.to_owned(), |g| scope.expand(g));
             let mut blocks: Vec<_> = widget.styles.blocks().filter(|b| b.slot == slot.key).collect();
             blocks.sort_by_key(|b| b.state);
+            // LVGL 9 has no ticks part; the ticks of a meter's scale are its items.
+            let part = match slot.part {
+                Part::Ticks if v9 && widget.kind == WidgetKind::Meter => "LV_PART_ITEMS".to_owned(),
+                Part::Ticks if v9 => {
+                    if !blocks.is_empty() {
+                        self.ctx.warnings.push(format!(
+                            "{}: LVGL 9 has no ticks part; the {} styles were skipped",
+                            widget.name, slot.label
+                        ));
+                    }
+                    continue;
+                }
+                part => part.c_const(),
+            };
             for block in blocks {
-                let selector = format!("{} | {}", slot.part.c_const(), block.state.c_expr());
+                let selector = format!("{part} | {}", block.state.c_expr());
                 for (prop, value) in &block.props {
                     if matches!(value, StyleValue::Image(i) if i.is_empty()) {
+                        continue;
+                    }
+                    let version = self.ctx.project.lvgl_version;
+                    if !compat::style_supported(version, *prop) || !compat::style_value_supported(version, value) {
+                        self.ctx.warnings.push(format!(
+                            "{}: style {} is not available in LVGL 9 and was skipped",
+                            widget.name,
+                            prop.name()
+                        ));
                         continue;
                     }
                     if let Some(variable) = value.as_theme() {
@@ -775,10 +850,16 @@ fn ui_c(ctx: &Context<'_>, assets: &AssetDecls) -> String {
     code.line(&format!("#include \"{}\"\n", main_header(names)));
     code.line(&format!("lv_obj_t * {};\n", names.global("___initial_actions0")));
     code.line("/* Requirements on the application's lv_conf.h */");
-    code.line(
-        "#if LV_COLOR_DEPTH != 16\n    #error \"LV_COLOR_DEPTH must be 16 to match the generated images\"\n#endif",
-    );
-    if !assets.images.is_empty() {
+    let major = ctx.target.major;
+    code.line(&format!(
+        "#if LVGL_VERSION_MAJOR != {major}\n    #error \"This UI was generated for LVGL {major} (LVGLab: project settings, LVGL version)\"\n#endif"
+    ));
+    if !ctx.target.is_v9() {
+        code.line(
+            "#if LV_COLOR_DEPTH != 16\n    #error \"LV_COLOR_DEPTH must be 16 to match the generated images\"\n#endif",
+        );
+    }
+    if !assets.images.is_empty() && !ctx.target.is_v9() {
         let swap = u8::from(project.export.swap_bytes);
         code.line(&format!(
             "#if LV_COLOR_16_SWAP != {swap}\n    #error \"LV_COLOR_16_SWAP must be {swap} to match the generated images (LVGLab: project settings, byte swap)\"\n#endif"
@@ -1293,6 +1374,47 @@ mod tests {
         let screen_h = file(&sources, "ui_Screen1.h");
         assert!(screen_h.contains("extern lv_obj_t * ui_Button1;"));
         assert!(screen_h.contains("void ui_event_Button1(lv_event_t * e);"));
+    }
+
+    #[test]
+    fn lvgl_9_uses_the_native_api() {
+        let mut project = project();
+        project.lvgl_version = lvglab_model::project::LvglVersion::V9_6_0;
+        let screen = project.screens[0].id;
+        let mut msgbox = project.new_widget(WidgetKind::Msgbox);
+        msgbox.set_prop("buttons", PropValue::Text("Yes|No".into()));
+        project.insert(screen, 6, msgbox).unwrap();
+        let mut label = project.new_widget(WidgetKind::Label);
+        label.set_prop("long_mode", PropValue::Enum("LV_LABEL_LONG_DOT".into()));
+        project.insert(screen, 7, label).unwrap();
+        let chart = project.screens[0].children.iter_mut().find(|w| w.kind == WidgetKind::Chart).unwrap();
+        chart.set_prop("zoom", PropValue::Pair(512, 256));
+
+        let sources = generate(&project, &AssetDecls::default());
+        let screen = file(&sources, "ui_Screen1.c");
+        for expected in [
+            "ui_Button1 = lv_button_create(ui_Screen1);",
+            "_ui_screen_change(&ui_Screen2, LV_SCREEN_LOAD_ANIM_FADE_ON, 300, 0, &ui_Screen2_screen_init);",
+            "static int32_t ui_Chart1_series_0_array[] = {1, 2, LV_CHART_POINT_NONE};",
+            "lv_chart_set_series_ext_y_array(ui_Chart1, ui_Chart1_series_0, ui_Chart1_series_0_array);",
+            "ui_Meter1 = lv_scale_create(ui_Screen1);",
+            "lv_scale_set_line_needle_value(ui_Meter1, ui_Meter1_needle, 200 / 2 - 10, 0);",
+            "ui_Messagebox1 = lv_msgbox_create(ui_Screen1);",
+            "lv_msgbox_add_footer_button(ui_Messagebox1, \"No\");",
+            "lv_label_set_long_mode(ui_Label1, LV_LABEL_LONG_MODE_DOTS);",
+            "if(ui_Screen1) lv_obj_delete(ui_Screen1);",
+        ] {
+            assert!(screen.contains(expected), "missing `{expected}` in\n{screen}");
+        }
+        assert!(!screen.contains("lv_chart_set_zoom_x"));
+        assert!(!screen.contains("ui_Messagebox1_buttons"), "loops need no array");
+        let ui_c = file(&sources, "ui.c");
+        assert!(ui_c.contains("#if LVGL_VERSION_MAJOR != 9"));
+        assert!(ui_c.contains("lv_display_t * dispp = lv_display_get_default();"));
+        assert!(!ui_c.contains("LV_COLOR_DEPTH"));
+        assert!(file(&sources, "ui_theme_manager.c").contains("case LV_STYLE_IMAGE_RECOLOR:"));
+        assert!(sources.warnings.iter().any(|w| w.contains("Meter1: LVGL 9 has no meter")));
+        assert!(sources.warnings.iter().any(|w| w.contains("Chart1: Zoom (256 = 100%) is not available in LVGL 9.6")));
     }
 
     #[test]

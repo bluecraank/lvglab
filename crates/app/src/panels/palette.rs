@@ -2,6 +2,7 @@
 
 use eframe::egui::{self, RichText, Sense, Vec2};
 use lvglab_model::catalog::{self, Category, WidgetDef};
+use lvglab_model::compat;
 
 use crate::app::Studio;
 use crate::commands::Command;
@@ -18,8 +19,10 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     );
     ui.add_space(4.0);
     let filter = studio.palette_filter.to_lowercase();
+    let version = studio.doc.project.lvgl_version;
     for category in Category::PALETTE {
         let defs: Vec<&WidgetDef> = catalog::in_category(category)
+            .filter(|d| compat::widget_supported(version, d.kind))
             .filter(|d| {
                 filter.is_empty()
                     || d.name.to_lowercase().contains(&filter)
@@ -66,7 +69,12 @@ fn tile(ui: &mut egui::Ui, studio: &mut Studio, def: &'static WidgetDef) {
         egui::FontId::proportional(11.0),
         text_color,
     );
-    let response = response.on_hover_text(tr(def.description));
+    let note = def.v9.note;
+    let response = if studio.doc.project.lvgl_version.is_v9() && !note.is_empty() {
+        response.on_hover_text(format!("{}\n\n{}", tr(def.description), tr(note)))
+    } else {
+        response.on_hover_text(tr(def.description))
+    };
     if response.drag_started() {
         response.dnd_set_drag_payload(def.kind);
     }

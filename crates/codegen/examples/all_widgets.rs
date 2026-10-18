@@ -1,16 +1,22 @@
 //! Exports a project containing every widget type, used to compile-check the
-//! generated code against LVGL: `cargo run -p lvglab-codegen --example all_widgets -- <out-dir>`
+//! generated code against LVGL:
+//! `cargo run -p lvglab-codegen --example all_widgets -- <out-dir> [lvgl-version]`
 
 use lvglab_model::catalog;
+use lvglab_model::color_theme::ThemeColor;
 use lvglab_model::event::{Action, EventHandler, EventTrigger, ModifyOp, ScreenAnim};
 use lvglab_model::flags::{ObjFlag, ObjState, StateMask};
-use lvglab_model::prop::PropValue;
-use lvglab_model::style::{StyleProp, StyleValue};
+use lvglab_model::project::LvglVersion;
+use lvglab_model::prop::{PropKind, PropValue};
+use lvglab_model::style::{StyleKind, StyleProp, StyleValue};
 use lvglab_model::{Color, Project, WidgetKind};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out = std::env::args().nth(1).ok_or("usage: all_widgets <out-dir>")?;
+    let out = std::env::args().nth(1).ok_or("usage: all_widgets <out-dir> [lvgl-version]")?;
     let mut project = Project::new("AllWidgets");
+    if let Some(version) = std::env::args().nth(2) {
+        project.lvgl_version = LvglVersion::from_suffix(&version).ok_or("unknown LVGL version")?;
+    }
     let screen = project.screens[0].id;
     let second = project.add_screen();
     project.widget_mut(second).unwrap().set_prop("temporary", PropValue::Bool(true));
@@ -102,10 +108,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let img = project.screens[0].children.iter_mut().find(|w| w.kind == WidgetKind::Image).unwrap();
     img.set_prop("src", PropValue::Image("logo".into()));
 
+    change_every_property(&mut project);
+    project.color_themes.add_variable("Accent", ThemeColor { color: Color::from_hex(0xF15C00), opa: 255 });
+    let img = project.screens[0].children.iter_mut().find(|w| w.kind == WidgetKind::Image).unwrap();
+    img.styles.set("main", StateMask::DEFAULT, StyleProp::ImgRecolor, StyleValue::Theme("Accent".into()));
+
     let output = lvglab_codegen::generate_library(&project, None);
     for warning in &output.warnings {
         eprintln!("warning: {warning}");
     }
     lvglab_codegen::write(std::path::Path::new(&out), &output, &["src"])?;
     Ok(())
+}
+
+/// Gives every property a non-default value so each setter is emitted, and
+/// sets every style property on the first panel.
+fn change_every_property(project: &mut Project) {
+    let mut first_panel = true;
+    for widget in &mut project.screens[0].children {
+        let def = widget.def();
+        for prop in def.props {
+            let value = match (prop.kind, prop.default_value()) {
+                (PropKind::Bool, PropValue::Bool(b)) => PropValue::Bool(!b),
+                (PropKind::Int { min, max }, PropValue::Int(v)) => {
+                    PropValue::Int(if v == min { max.min(min + 1) } else { min })
+                }
+                (PropKind::Pair { min, max, .. }, _) => PropValue::Pair(min.max(0), max.min(100)),
+                (PropKind::Enum(options), _) => PropValue::Enum(options.last().unwrap().c.to_owned()),
+                (PropKind::Color, _) => PropValue::Color(Color::from_hex(0x123456)),
+                _ => continue,
+            };
+            widget.set_prop(prop.key, value);
+        }
+        if widget.kind == WidgetKind::Panel && first_panel {
+            first_panel = false;
+            for prop in StyleProp::ALL.iter().copied() {
+                let value = match prop.kind() {
+                    StyleKind::Coord => StyleValue::Coord(lvglab_model::Coord::px(1)),
+                    StyleKind::Int { min, max } => StyleValue::Int(1.clamp(min, max)),
+                    StyleKind::Opa => StyleValue::Int(128),
+                    StyleKind::Color => StyleValue::Color(Color::from_hex(0x654321)),
+                    StyleKind::Bool => StyleValue::Bool(true),
+                    StyleKind::Enum(options) => StyleValue::Enum(options[0].c.to_owned()),
+                    StyleKind::Font => StyleValue::Font("montserrat_20".into()),
+                    StyleKind::Image => StyleValue::Image("logo".into()),
+                };
+                widget.styles.set("main", StateMask::DEFAULT, prop, value);
+            }
+        }
+    }
 }

@@ -433,7 +433,12 @@ impl<'a> Renderer<'a> {
         let content = Self::content(rect, &main);
         let z = self.zoom;
         let line_h = main.line_h;
+        let lvgl9 = self.resolver.theme.lvgl9;
         match widget.kind {
+            // LVGL 9 exports these differently, see the catalog.
+            WidgetKind::Meter if lvgl9 => self.scale(widget, content, &main, &part("ticks"), &part("indicator")),
+            WidgetKind::Msgbox if lvgl9 => self.msgbox(widget, rect, &main, &part("title"), &part("buttons")),
+            WidgetKind::Colorwheel if lvgl9 => {}
             WidgetKind::Label => {
                 let mode = widget.prop_text("long_mode");
                 let wrap = widget.geometry.width.unit != lvglab_model::Unit::Content;
@@ -445,7 +450,10 @@ impl<'a> Renderer<'a> {
                 let wrap = wrap && !matches!(mode.as_str(), "LV_LABEL_LONG_SCROLL" | "LV_LABEL_LONG_SCROLL_CIRCULAR");
                 let painter = self.painter.with_clip_rect(rect.intersect(self.painter.clip_rect()));
                 let clipped = Renderer { painter, ..*self };
-                clipped.text(content, &widget.prop_text("text"), &main, wrap, rows, widget.prop_bool("recolor"));
+                // LVGL 9.0 – 9.2 have no recoloring of labels.
+                let (major, minor) = self.project.lvgl_version.major_minor();
+                let recolor = widget.prop_bool("recolor") && (major == 8 || minor >= 3);
+                clipped.text(content, &widget.prop_text("text"), &main, wrap, rows, recolor);
             }
             WidgetKind::Spangroup => {
                 let text: String = lvglab_codegen::template::lines(&widget.prop_text("spans")).collect();
@@ -846,6 +854,110 @@ impl<'a> Renderer<'a> {
         self.painter.circle_filled(c, 6.0 * z, hub);
     }
 
+    /// The `lv_scale` (round, inner labels) a meter becomes with LVGL 9: an
+    /// arc along the ticks, major ticks with labels and a needle line.
+    fn scale(&self, widget: &Widget, content: Rect, main: &Look, ticks: &Look, major: &Look) {
+        let (c, r) = arc_geometry(content, 0.0);
+        let z = self.zoom;
+        let rotation = widget.prop_int("rotation") as f32;
+        let angle_range = widget.prop_int("angle_range") as f32;
+        let count = widget.prop_int("ticks").max(2);
+        let major_every = widget.prop_int("major_every").max(1);
+        let major_color = widget.prop("major_color").and_then(|v| v.as_color()).unwrap_or(Color::BLACK);
+        let (min, max) = widget.prop_pair("range");
+        let width = |look: &Look| look.line_width.max(main.line_width).max(z);
+        self.arc(
+            c,
+            r,
+            rotation,
+            rotation + angle_range,
+            ArcStroke { width: main.arc_width.max(z), color: main.arc_color, rounded: false, image: None },
+        );
+        for i in 0..count {
+            let a = (rotation + angle_range * i as f32 / (count - 1) as f32).to_radians();
+            let dir = vec2(a.cos(), a.sin());
+            let is_major = i % major_every == 0;
+            let (len, stroke) = if is_major {
+                (15.0 * z, Stroke::new(width(major), rgba(major_color, 255, main.opa)))
+            } else {
+                (10.0 * z, Stroke::new(width(ticks), rgba(lvglab_model::Palette::Grey.main(), 255, main.opa)))
+            };
+            self.painter.line_segment([c + dir * r, c + dir * (r - len)], stroke);
+            if is_major {
+                let value = min + (max - min) * i / (count - 1);
+                self.painter.text(
+                    c + dir * (r - len - 10.0 * z),
+                    egui::Align2::CENTER_CENTER,
+                    value.to_string(),
+                    main.font.clone(),
+                    main.text_color,
+                );
+            }
+        }
+        let fraction = ((widget.prop_int("value") - min) as f32 / (max - min).max(1) as f32).clamp(0.0, 1.0);
+        let a = (rotation + angle_range * fraction).to_radians();
+        let needle = widget.prop("needle_color").and_then(|v| v.as_color()).unwrap_or(Color::rgb(33, 150, 243));
+        let length = (content.width() / 2.0 - 10.0 * z).max(0.0);
+        self.painter
+            .line_segment([c, c + vec2(a.cos(), a.sin()) * length], Stroke::new(4.0 * z, rgba(needle, 255, main.opa)));
+    }
+
+    /// The LVGL 9 message box: a header with title and close button, the
+    /// text and a footer with one button per entry.
+    fn msgbox(&self, widget: &Widget, rect: Rect, main: &Look, title: &Look, buttons: &Look) {
+        let z = self.zoom;
+        let bar = (130 / 3) as f32 * z;
+        let pad = self.resolver.theme.pad_small as f32 * z;
+        let painter = self.painter.with_clip_rect(rect.intersect(self.painter.clip_rect()));
+        let r = Renderer { painter, ..*self };
+        let mut body = rect;
+        let close = widget.prop_bool("close_btn");
+        let title_text = widget.prop_text("title");
+        if !title_text.is_empty() || close {
+            let header = Rect::from_min_size(rect.min, vec2(rect.width(), bar));
+            body.min.y = header.bottom();
+            let grey = rgba(self.resolver.theme.grey, 255, main.opa);
+            r.painter.rect_filled(
+                header,
+                CornerRadius { nw: main.radius as u8, ne: main.radius as u8, sw: 0, se: 0 },
+                grey,
+            );
+            let inner = header.shrink(pad);
+            let mut title_rect = inner;
+            if close {
+                let button = Rect::from_min_max(pos2(inner.right() - inner.height(), inner.top()), inner.max);
+                title_rect.max.x = button.left() - pad;
+                r.button(button, "✖", buttons);
+            }
+            let y = (inner.height() - title.line_h).max(0.0) / 2.0;
+            r.text(title_rect.shrink2(vec2(0.0, y)), &title_text, title, false, Some(1), false);
+        }
+        let labels = lvglab_codegen::template::str_array_entries(&widget.prop_text("buttons"), false);
+        if !labels.is_empty() {
+            let footer = Rect::from_min_size(pos2(rect.left(), rect.bottom() - bar), vec2(rect.width(), bar));
+            body.max.y = footer.top();
+            let inner = footer.shrink(pad);
+            // Buttons are sized to their text and spread evenly (LV_FLEX_ALIGN_SPACE_EVENLY).
+            let pad_def = self.resolver.theme.pad_def as f32 * z;
+            let widths: Vec<f32> = labels.iter().map(|l| self.text_size(l, buttons).x + 2.0 * pad_def).collect();
+            let gap = ((inner.width() - widths.iter().sum::<f32>()) / (labels.len() + 1) as f32).max(0.0);
+            let mut x = inner.left() + gap;
+            for (label, w) in labels.iter().zip(widths) {
+                r.button(Rect::from_min_size(pos2(x, inner.top()), vec2(w, inner.height())), label, buttons);
+                x += w + gap;
+            }
+        }
+        r.text(body.shrink(pad), &widget.prop_text("text"), main, true, None, false);
+    }
+
+    /// A button with centered text.
+    fn button(&self, rect: Rect, text: &str, look: &Look) {
+        self.draw_box(rect, look);
+        let size = self.text_size(text, look);
+        let text_rect = Rect::from_center_size(rect.center(), vec2(size.x + 1.0, look.line_h));
+        self.text(text_rect, text, look, false, Some(1), false);
+    }
+
     fn chart(&self, widget: &Widget, content: Rect, main: &Look) {
         let (hdiv, vdiv) = widget.prop_pair("div_lines");
         let grid = Stroke::new(1.0_f32, main.border_color.gamma_multiply(0.7));
@@ -1036,17 +1148,25 @@ impl<'a> Renderer<'a> {
             let active = i == 0;
             let mut look = bar_look.clone();
             look.text_align = Align::Center;
+            let mut text_cell = cell;
             if active {
+                // The theme's checked tab: muted primary background and a bottom border of
+                // 2 × BORDER_WIDTH; LVGL 9 also pads the top by that much.
+                let border = 4.0 * self.zoom;
                 look.text_color = primary;
+                self.painter.rect_filled(cell, 0, primary.gamma_multiply(0.2));
                 self.painter.rect_filled(
-                    Rect::from_min_max(pos2(cell.left(), cell.bottom() - 3.0 * self.zoom), cell.max),
+                    Rect::from_min_max(pos2(cell.left(), cell.bottom() - border), cell.max),
                     0,
                     primary,
                 );
+                if self.resolver.theme.lvgl9 {
+                    text_cell.min.y += border;
+                }
             }
             let text_h = look.line_h;
             self.text(
-                cell.shrink2(vec2(2.0, (cell.height() - text_h).max(0.0) / 2.0)),
+                text_cell.shrink2(vec2(2.0, (text_cell.height() - text_h).max(0.0) / 2.0)),
                 title,
                 &look,
                 false,

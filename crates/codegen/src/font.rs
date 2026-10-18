@@ -1,4 +1,4 @@
-//! Rendering TrueType/OpenType fonts into LVGL 8 bitmap fonts
+//! Rendering TrueType/OpenType fonts into LVGL 8 and 9 bitmap fonts
 //! (`lv_font_fmt_txt`, uncompressed), the format `lv_font_conv` produces.
 
 use std::fmt::Write as _;
@@ -171,13 +171,13 @@ fn render(
     if runs.is_empty() {
         out.push_str("    {.range_start = 32, .range_length = 1, .glyph_id_start = 0, .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY},\n");
     }
-    out.push_str("};\n\n#if LVGL_VERSION_MAJOR >= 8\nstatic lv_font_fmt_txt_glyph_cache_t cache;\n#endif\n\n");
+    out.push_str("};\n\n#if LVGL_VERSION_MAJOR == 8\nstatic lv_font_fmt_txt_glyph_cache_t cache;\n#endif\n\n");
     out.push_str("static const lv_font_fmt_txt_dsc_t font_dsc = {\n");
     out.push_str("    .glyph_bitmap = glyph_bitmap,\n    .glyph_dsc = glyph_dsc,\n    .cmaps = cmaps,\n");
     out.push_str("    .kern_dsc = NULL,\n    .kern_scale = 0,\n");
     let _ = writeln!(out, "    .cmap_num = {},", runs.len().max(1));
     let _ = writeln!(out, "    .bpp = {bpp},");
-    out.push_str("    .kern_classes = 0,\n    .bitmap_format = 0,\n#if LVGL_VERSION_MAJOR >= 8\n    .cache = &cache\n#endif\n};\n\n");
+    out.push_str("    .kern_classes = 0,\n    .bitmap_format = 0,\n#if LVGL_VERSION_MAJOR == 8\n    .cache = &cache\n#endif\n};\n\n");
     let _ = writeln!(out, "const lv_font_t {symbol} = {{");
     out.push_str(
         "    .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,\n    .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,\n",

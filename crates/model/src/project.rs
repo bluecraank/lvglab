@@ -19,6 +19,11 @@ lv_enum! {
     /// LVGL releases the generated code targets.
     #[derive(Default)]
     pub enum LvglVersion: "" {
+        V9_6_0 = "9.6.0", "9.6.0";
+        V9_5_0 = "9.5.0", "9.5.0";
+        V9_4_0 = "9.4.0", "9.4.0";
+        V9_3_0 = "9.3.0", "9.3.0";
+        V9_2_2 = "9.2.2", "9.2.2";
         #[default]
         V8_3_11 = "8.3.11", "8.3.11";
         V8_3_10 = "8.3.10", "8.3.10";
@@ -27,6 +32,30 @@ lv_enum! {
         V8_3_7 = "8.3.7", "8.3.7";
         V8_3_6 = "8.3.6", "8.3.6";
         V8_3_0 = "8.3.0", "8.3.0";
+    }
+}
+
+impl LvglVersion {
+    /// Major and minor version, e.g. `(9, 2)`.
+    pub fn major_minor(self) -> (u8, u8) {
+        let mut parts = self.suffix().split('.').map(|p| p.parse().unwrap_or(0));
+        (parts.next().unwrap_or(8), parts.next().unwrap_or(0))
+    }
+
+    pub fn is_v9(self) -> bool {
+        self.major_minor().0 >= 9
+    }
+
+    /// The supported release closest to `text` (e.g. `9.1.0` → 9.2.2), for
+    /// imported projects that target a release LVGLab does not list.
+    pub fn nearest(text: &str) -> Option<Self> {
+        let mut parts = text.trim().split('.').map(|p| p.parse::<u8>().ok());
+        let (major, minor) = (parts.next()??, parts.next().flatten().unwrap_or(0));
+        Self::ALL
+            .iter()
+            .copied()
+            .filter(|v| v.major_minor().0 == major)
+            .min_by_key(|v| v.major_minor().1.abs_diff(minor))
     }
 }
 
@@ -285,11 +314,11 @@ impl Project {
     // -- lookup -----------------------------------------------------------
 
     /// Screens and component definitions.
-    fn roots(&self) -> impl Iterator<Item = &Widget> {
+    pub(crate) fn roots(&self) -> impl Iterator<Item = &Widget> {
         self.screens.iter().chain(&self.components)
     }
 
-    fn roots_mut(&mut self) -> impl Iterator<Item = &mut Widget> {
+    pub(crate) fn roots_mut(&mut self) -> impl Iterator<Item = &mut Widget> {
         self.screens.iter_mut().chain(&mut self.components)
     }
 
@@ -762,6 +791,15 @@ fn same_contents(a: &Path, b: &Path) -> bool {
 mod tests {
     use super::*;
     use crate::event::{Action, EventHandler, EventTrigger, ScreenAnim};
+
+    #[test]
+    fn lvgl_versions() {
+        assert_eq!(LvglVersion::V9_3_0.major_minor(), (9, 3));
+        assert!(!LvglVersion::default().is_v9());
+        assert_eq!(LvglVersion::nearest("9.1.0"), Some(LvglVersion::V9_2_2));
+        assert_eq!(LvglVersion::nearest("8.3.2"), Some(LvglVersion::V8_3_11));
+        assert_eq!(LvglVersion::nearest("10.0"), None);
+    }
 
     #[test]
     fn instances_expand_to_their_component() {
