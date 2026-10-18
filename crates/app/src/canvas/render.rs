@@ -30,6 +30,8 @@ struct Look {
     bg: Color32,
     grad: Option<(Color32, bool, f32, f32)>,
     bg_image: Option<String>,
+    bg_image_opa: f32,
+    bg_image_tiled: bool,
     radius: f32,
     border_width: f32,
     border_color: Color32,
@@ -124,6 +126,8 @@ impl<'a> Renderer<'a> {
                 .get(path, slot, state, P::BgImgSrc)
                 .and_then(|v| v.as_str().map(str::to_owned))
                 .filter(|s| !s.is_empty()),
+            bg_image_opa: f32::from(o(P::BgImgOpa)) / 255.0,
+            bg_image_tiled: r.bool(path, slot, state, P::BgImgTiled),
             radius: int(P::Radius),
             border_width: int(P::BorderWidth) * z,
             border_color: rgba(color(P::BorderColor).unwrap_or(Color::BLACK), o(P::BorderOpa), opa),
@@ -185,10 +189,24 @@ impl<'a> Renderer<'a> {
         }
         if let Some(image) = &look.bg_image {
             if let Some(texture) = self.assets.image(image) {
+                // LVGL centers the image (or tiles it from the top left) and clips it to the object.
                 let size = vec2(texture.size[0] as f32, texture.size[1] as f32) * self.zoom;
-                let target = Rect::from_center_size(rect.center(), size);
-                let tint = Color32::from_white_alpha((look.opa * 255.0) as u8);
-                painter.image(texture.handle.id(), target, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), tint);
+                let clipped = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
+                let tint = Color32::from_white_alpha((look.opa * look.bg_image_opa * 255.0) as u8);
+                let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+                if look.bg_image_tiled && size.x >= 1.0 && size.y >= 1.0 {
+                    let mut y = rect.top();
+                    while y < rect.bottom() {
+                        let mut x = rect.left();
+                        while x < rect.right() {
+                            clipped.image(texture.handle.id(), Rect::from_min_size(pos2(x, y), size), uv, tint);
+                            x += size.x;
+                        }
+                        y += size.y;
+                    }
+                } else {
+                    clipped.image(texture.handle.id(), Rect::from_center_size(rect.center(), size), uv, tint);
+                }
             }
         }
         if look.border_width > 0.0 && look.border_color.a() > 0 {
@@ -497,7 +515,7 @@ impl<'a> Renderer<'a> {
             }
             WidgetKind::Bar | WidgetKind::Slider => self.bar(
                 widget,
-                rect,
+                content,
                 state,
                 &part("indicator"),
                 (widget.kind == WidgetKind::Slider).then(|| part("knob")),
@@ -698,7 +716,24 @@ impl<'a> Renderer<'a> {
                 pos2(rect.right(), rect.bottom() - rect.height() * start),
             )
         };
-        self.draw_box(ind, indicator);
+        // LVGL draws the indicator's background along the whole bar and shows the part up to the
+        // value, so an image or a gradient along the bar does not move with the value.
+        let along =
+            indicator.bg_image.is_some() || indicator.grad.is_some_and(|(_, vertical, _, _)| vertical != horizontal);
+        if along {
+            let full = if horizontal {
+                Rect::from_min_max(pos2(rect.left(), ind.top()), pos2(rect.right(), ind.bottom()))
+            } else {
+                Rect::from_min_max(pos2(ind.left(), rect.top()), pos2(ind.right(), rect.bottom()))
+            };
+            let painter = self.painter.with_clip_rect(ind.intersect(self.painter.clip_rect()));
+            let background = Look { shadow: None, border_width: 0.0, outline_width: 0.0, ..indicator.clone() };
+            Renderer { painter, ..*self }.draw_box(full, &background);
+            let frame = Look { bg: Color32::TRANSPARENT, grad: None, bg_image: None, ..indicator.clone() };
+            self.draw_box(ind, &frame);
+        } else {
+            self.draw_box(ind, indicator);
+        }
         if let Some(knob) = knob {
             let size = rect.width().min(rect.height());
             let (l, t, r, b) = knob.pad;
