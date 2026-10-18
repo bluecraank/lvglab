@@ -57,6 +57,8 @@ pub struct Studio {
     pub start_page: Option<Vec<crate::start::Entry>>,
     /// The open merge wizard.
     pub merge: Option<crate::merge_dialog::MergeWizard>,
+    /// The open search window (Ctrl+F).
+    pub search: Option<crate::search_dialog::SearchState>,
     /// A running screenshot export.
     pub shots: Option<crate::screenshots::ShotJob>,
     /// Close the window as soon as possible (command line export done).
@@ -184,6 +186,7 @@ impl Studio {
             tour_pending: false,
             start_page: None,
             merge: None,
+            search: None,
             shots: None,
             exit_requested: false,
             return_to_start: false,
@@ -369,6 +372,9 @@ impl StudioApp {
         }
         if dialog == Some("new") {
             studio.execute(Command::NewProject, true);
+        }
+        if let Some(query) = dialog.and_then(|d| d.strip_prefix("search:")) {
+            studio.search = Some(crate::search_dialog::SearchState { query: query.to_owned(), ..Default::default() });
         }
         studio.canvas.overview = dialog == Some("overview");
         if options.randomize {
@@ -586,6 +592,7 @@ impl StudioApp {
             item(ui, tr("Delete"), "Del", selected.is_some(), selected.map(Command::Delete));
             ui.separator();
             item(ui, tr("Add screen"), "", true, Some(Command::AddScreen));
+            item(ui, tr("Find…"), "Ctrl+F", true, Some(Command::Find));
             ui.separator();
             item(ui, tr("Randomize values of this screen"), "", true, Some(Command::Randomize { all: false }));
             item(ui, tr("Randomize values of all screens"), "", true, Some(Command::Randomize { all: true }));
@@ -680,6 +687,9 @@ impl StudioApp {
         }
         if shortcut(ctrl, Key::E) {
             s.push(Command::ExportLibrary);
+        }
+        if shortcut(ctrl, Key::F) {
+            s.search = Some(crate::search_dialog::SearchState::new());
         }
         if shortcut(Modifiers::NONE, Key::F5) {
             s.toggle_simulation();
@@ -887,6 +897,7 @@ impl StudioApp {
         dialogs::show(ctx, &mut self.studio);
         crate::start::show(ctx, &mut self.studio);
         crate::merge_dialog::show(ctx, &mut self.studio);
+        crate::search_dialog::show(ctx, &mut self.studio);
         crate::screenshots::step(ctx, &mut self.studio);
         if self.studio.exit_requested {
             self.close_confirmed = true;

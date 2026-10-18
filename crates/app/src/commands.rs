@@ -55,6 +55,8 @@ pub enum Command {
     ShowStartPage,
     /// Saves a PNG of every screen (asks for the folder).
     ExportScreenshots,
+    /// Opens the search window.
+    Find,
     /// Random values for the widgets of the current screen or of all screens.
     Randomize {
         all: bool,
@@ -120,6 +122,7 @@ impl Studio {
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
             Command::Randomize { all } => self.randomize(all),
+            Command::Find => self.search = Some(crate::search_dialog::SearchState::new()),
             Command::ExportScreenshots => {
                 let project_dir = self.doc.dir().map(Path::to_path_buf);
                 let default = crate::screenshots::default_dir(project_dir.as_deref(), &self.doc.project.name);
