@@ -74,14 +74,19 @@ fn components(ui: &mut egui::Ui, studio: &mut Studio) {
             studio.push(Command::AddComponent);
         }
     });
-    let components: Vec<(WidgetId, String, usize)> =
-        studio.doc.project.components.iter().map(|c| (c.id, c.name.clone(), c.descendant_count())).collect();
+    let components: Vec<(WidgetId, String, usize, usize)> = studio
+        .doc
+        .project
+        .components
+        .iter()
+        .map(|c| (c.id, c.name.clone(), c.descendant_count(), c.children.len()))
+        .collect();
     if components.is_empty() {
         muted(ui, tr("Components are reusable groups of widgets; SquareLine components are imported too."));
         return;
     }
     let count = components.len();
-    for (index, (id, name, widgets)) in components.into_iter().enumerate() {
+    for (index, (id, name, widgets, roots)) in components.into_iter().enumerate() {
         let current = studio.screen == id;
         let response = ui
             .horizontal(|ui| {
@@ -92,6 +97,15 @@ fn components(ui: &mut egui::Ui, studio: &mut Studio) {
             .inner;
         if response.clicked() {
             studio.select_screen(id);
+        }
+        if roots > 1 {
+            ui.horizontal_wrapped(|ui| {
+                let warning = trf("⚠ {} objects on the top level; an instance uses only the first.", &[&roots]);
+                ui.colored_label(crate::visuals::WARNING, warning);
+                if ui.small_button(tr("Group them")).on_hover_text(tr("Put all objects into one container")).clicked() {
+                    studio.push(Command::GroupComponent(id));
+                }
+            });
         }
         response.context_menu(|ui| {
             if ui.add_enabled(index > 0, egui::Button::new(tr("Move up"))).clicked() {

@@ -68,6 +68,8 @@ pub enum Command {
     JumpTo(usize),
     AddScreen,
     AddComponent,
+    /// Puts the top level objects of a component into one container.
+    GroupComponent(WidgetId),
     /// Adds a widget to `parent` (or next to/into the selection).
     AddWidget {
         kind: WidgetKind,
@@ -179,6 +181,11 @@ impl Studio {
             Command::AddScreen => {
                 let id = self.doc.project.add_screen();
                 self.select_screen(id);
+            }
+            Command::GroupComponent(id) => {
+                if self.doc.project.group_component_roots(id) {
+                    self.notify(tr("Grouped the objects of the component into one container."));
+                }
             }
             Command::AddComponent => {
                 let id = self.doc.project.add_component();

@@ -297,6 +297,8 @@
   "Grey": "Grau",
   "Grid": "Raster",
   "Grid size": "Rastergröße",
+  "Group them": "Gruppieren",
+  "Grouped the objects of the component into one container.": "Die Objekte der Komponente wurden in einen Container gruppiert.",
   "Grow": "Wachsen",
   "Guides": "Hilfslinien",
   "Header": "Kopfzeile",
@@ -530,6 +532,7 @@
   "Project settings…": "Projekteinstellungen…",
   "Projects": "Projekte",
   "Purple": "Lila",
+  "Put all objects into one container": "Alle Objekte in einen Container packen",
   "Quit": "Beenden",
   "Quit without saving": "Ohne Speichern beenden",
   "RAM ~{} · Flash ~{} · {} / {} widgets": "RAM ~{} · Flash ~{} · {} / {} Widgets",
@@ -861,5 +864,6 @@
   "{}: style {} removed": "{}: Style {} entfernt",
   "{}: styles of the part {} removed": "{}: Styles des Parts {} entfernt",
   "{}: widget removed ({})": "{}: Widget entfernt ({})",
-  "{}: {} reset": "{}: {} zurückgesetzt"
+  "{}: {} reset": "{}: {} zurückgesetzt",
+  "⚠ {} objects on the top level; an instance uses only the first.": "⚠ {} Objekte auf oberster Ebene; eine Instanz nutzt nur das erste."
 }
