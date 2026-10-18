@@ -57,6 +57,10 @@ pub struct Studio {
     pub start_page: Option<Vec<crate::start::Entry>>,
     /// The open merge wizard.
     pub merge: Option<crate::merge_dialog::MergeWizard>,
+    /// A running screenshot export.
+    pub shots: Option<crate::screenshots::ShotJob>,
+    /// Close the window as soon as possible (command line export done).
+    pub exit_requested: bool,
     /// An action of the start page runs; show the page again unless it
     /// opens or creates a project.
     pub return_to_start: bool,
@@ -180,6 +184,8 @@ impl Studio {
             tour_pending: false,
             start_page: None,
             merge: None,
+            shots: None,
+            exit_requested: false,
             return_to_start: false,
             anchors: crate::tour::Anchors::new(),
             settings,
@@ -365,6 +371,9 @@ impl StudioApp {
             studio.execute(Command::NewProject, true);
         }
         studio.canvas.overview = dialog == Some("overview");
+        if let Some(dir) = options.export_screenshots.clone() {
+            studio.start_screenshots(dir, true);
+        }
         // `merge:<file>` opens the merge wizard, `merge-conflicts:<file>` its second step.
         if let Some((step, file)) = dialog.and_then(|d| d.split_once(':')).filter(|(s, _)| s.starts_with("merge")) {
             studio.execute(Command::MergeProjectPath(PathBuf::from(file)), true);
@@ -374,7 +383,11 @@ impl StudioApp {
         }
         if let Some(step) = dialog.and_then(|d| d.strip_prefix("tour")) {
             studio.tour = Some(step.trim_start_matches(':').parse::<usize>().map_or(0, |s| s.saturating_sub(1)));
-        } else if dialog.is_none() && options.screenshot.is_none() && !studio.settings.tour_done {
+        } else if dialog.is_none()
+            && options.screenshot.is_none()
+            && options.export_screenshots.is_none()
+            && !studio.settings.tour_done
+        {
             studio.tour_pending = true;
         }
         Self {
@@ -519,6 +532,7 @@ impl StudioApp {
             item(ui, tr("Start page"), "", Command::ShowStartPage);
             item(ui, tr("Import SquareLine project…"), "Ctrl+I", Command::ImportSquareLine);
             item(ui, tr("Merge project…"), "", Command::MergeProject);
+            item(ui, tr("Export screenshots…"), "", Command::ExportScreenshots);
             ui.separator();
             item(ui, tr("Save"), "Ctrl+S", Command::Save);
             item(ui, tr("Save as…"), "Ctrl+Shift+S", Command::SaveAs);
@@ -867,6 +881,11 @@ impl StudioApp {
         dialogs::show(ctx, &mut self.studio);
         crate::start::show(ctx, &mut self.studio);
         crate::merge_dialog::show(ctx, &mut self.studio);
+        crate::screenshots::step(ctx, &mut self.studio);
+        if self.studio.exit_requested {
+            self.close_confirmed = true;
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
         let s = &mut self.studio;
         let busy = s.start_page.is_some()
             || s.new_project.is_some()
