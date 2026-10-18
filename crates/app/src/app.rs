@@ -47,6 +47,8 @@ pub struct Studio {
     pub status: Option<String>,
     pub report: Option<Report>,
     pub confirm_discard: Option<Command>,
+    /// The open "New project" dialog.
+    pub new_project: Option<crate::commands::NewProject>,
     pub settings: AppSettings,
     pub assets: AssetCache,
     pub show_project_settings: bool,
@@ -160,6 +162,7 @@ impl Studio {
             status: None,
             report: None,
             confirm_discard: None,
+            new_project: None,
             settings,
             assets: AssetCache::default(),
             show_project_settings: false,
@@ -333,6 +336,9 @@ impl StudioApp {
         studio.show_about = dialog == Some("about");
         if dialog == Some("discard") {
             studio.confirm_discard = Some(Command::NewProject);
+        }
+        if dialog == Some("new") {
+            studio.execute(Command::NewProject, true);
         }
         Self {
             studio,
@@ -877,6 +883,42 @@ mod tests {
         let back = studio.timeline.undo().unwrap();
         assert_eq!(back.lvgl_version, LvglVersion::V8_3_11);
         assert!(back.widget(id).is_some());
+    }
+
+    #[test]
+    fn new_asks_for_the_settings_and_remembers_them() {
+        let mut studio = Studio::new(AppSettings::default());
+        studio.doc.project.name = "Changed".into();
+        studio.timeline.observe(&studio.doc.project);
+        // Opening the dialog replaces nothing yet.
+        studio.execute(Command::NewProject, false);
+        assert_eq!(studio.doc.project.name, "Changed");
+        let mut draft = studio.new_project.clone().expect("the dialog is open");
+        draft.name = "Dash".into();
+        draft.display.width = 466;
+        draft.display.height = 466;
+        draft.display.shape = lvglab_model::project::DisplayShape::Round;
+        draft.lvgl_version = LvglVersion::V9_6_0;
+
+        let create = Command::CreateProject(Box::new(draft));
+        studio.execute(create.clone(), false);
+        if studio.doc.is_dirty() {
+            assert!(studio.confirm_discard.is_some(), "unsaved changes are not dropped silently");
+            studio.execute(create, true);
+        }
+        let project = &studio.doc.project;
+        assert_eq!(
+            (project.name.as_str(), project.display.width, project.lvgl_version),
+            ("Dash", 466, LvglVersion::V9_6_0)
+        );
+        studio.execute(Command::NewProject, true);
+        let next = studio.new_project.as_ref().unwrap();
+        assert_eq!(
+            (next.display.width, next.lvgl_version),
+            (466, LvglVersion::V9_6_0),
+            "the choices are offered again"
+        );
+        assert_eq!(next.name, "MyProject");
     }
 
     #[test]

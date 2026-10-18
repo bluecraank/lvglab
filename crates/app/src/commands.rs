@@ -4,17 +4,53 @@
 
 use std::path::{Path, PathBuf};
 
-use lvglab_model::project::PROJECT_EXTENSION;
+use lvglab_model::project::{DisplaySettings, LvglVersion, PROJECT_EXTENSION, ThemeSettings};
 use lvglab_model::{Project, WidgetId, WidgetKind};
 
 use crate::app::{Report, Studio};
 use crate::document::{Document, EntryKind, Timeline};
 use crate::i18n::{tr, trf};
 use crate::modal::Tone;
+use crate::settings::NewProjectDefaults;
+
+/// The settings asked for when creating a project.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewProject {
+    pub name: String,
+    pub display: DisplaySettings,
+    pub lvgl_version: LvglVersion,
+    pub theme: ThemeSettings,
+}
+
+impl NewProject {
+    pub fn from_defaults(defaults: &NewProjectDefaults) -> Self {
+        Self {
+            name: "MyProject".to_owned(),
+            display: defaults.display.clone(),
+            lvgl_version: defaults.lvgl_version,
+            theme: defaults.theme.clone(),
+        }
+    }
+
+    pub fn defaults(&self) -> NewProjectDefaults {
+        NewProjectDefaults { display: self.display.clone(), lvgl_version: self.lvgl_version, theme: self.theme.clone() }
+    }
+
+    pub fn build(&self) -> Project {
+        let name = self.name.trim();
+        let mut project = Project::new(if name.is_empty() { "MyProject" } else { name });
+        project.display = self.display.clone();
+        project.lvgl_version = self.lvgl_version;
+        project.theme = self.theme.clone();
+        project
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Command {
+    /// Asks for the settings of a new project.
     NewProject,
+    CreateProject(Box<NewProject>),
     Open,
     OpenPath(PathBuf),
     ImportSquareLine,
@@ -53,7 +89,11 @@ impl Command {
     fn replaces_document(&self) -> bool {
         matches!(
             self,
-            Self::NewProject | Self::Open | Self::OpenPath(_) | Self::ImportSquareLine | Self::ImportSquareLinePath(_)
+            Self::CreateProject(_)
+                | Self::Open
+                | Self::OpenPath(_)
+                | Self::ImportSquareLine
+                | Self::ImportSquareLinePath(_)
         )
     }
 }
@@ -65,8 +105,10 @@ impl Studio {
             return;
         }
         match command {
-            Command::NewProject => {
-                self.load_document(Document::new(Project::new("MyProject"), None), tr("New project"))
+            Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
+            Command::CreateProject(project) => {
+                self.settings.new_project = project.defaults();
+                self.load_document(Document::new(project.build(), None), tr("New project"));
             }
             Command::Open => {
                 if let Some(path) =
