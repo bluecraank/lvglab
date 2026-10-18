@@ -185,7 +185,7 @@ mod tests {
         let mut p = Project::new("P");
         let screen = p.screens[0].id;
         let second = p.add_screen();
-        let mut add = |p: &mut Project, parent: WidgetId, kind: WidgetKind, f: &dyn Fn(&mut Widget)| {
+        let add = |p: &mut Project, parent: WidgetId, kind: WidgetKind, f: &dyn Fn(&mut Widget)| {
             let mut w = p.new_widget(kind);
             f(&mut w);
             p.insert(parent, usize::MAX, w).unwrap();
