@@ -11,6 +11,7 @@ mod document;
 mod i18n;
 mod modal;
 mod panels;
+mod recorder;
 mod settings;
 mod simulator;
 mod visuals;

@@ -56,11 +56,54 @@ pub struct Studio {
     pub assistant: crate::assistant::Assistant,
     /// Running simulation of the project on the canvas.
     pub simulation: Option<crate::simulator::Simulation>,
+    /// GIF recording of the simulation.
+    pub recorder: Option<crate::recorder::Recorder>,
+    /// GIFs being encoded in the background.
+    pub gif_jobs: Vec<std::sync::mpsc::Receiver<Result<PathBuf, String>>>,
 }
 
 impl Studio {
+    /// Starts recording the simulated display into a GIF.
+    pub fn start_recording(&mut self, now: f64) {
+        if self.simulation.is_some() {
+            self.recorder = Some(crate::recorder::Recorder::new(now));
+        }
+    }
+
+    /// Stops the recording and asks where to save the GIF.
+    pub fn stop_recording(&mut self) {
+        let Some(recorder) = self.recorder.take() else { return };
+        let name = format!("{}.gif", self.doc.project.name);
+        let dialog = rfd::FileDialog::new().add_filter("GIF", &["gif"]).set_file_name(name);
+        if let Some(path) = dialog.save_file() {
+            self.gif_jobs.push(recorder.finish(path));
+            self.notify(tr("Writing the GIF…"));
+        }
+    }
+
+    fn poll_gif_jobs(&mut self) {
+        let mut done = Vec::new();
+        self.gif_jobs.retain(|job| match job.try_recv() {
+            Ok(result) => {
+                done.push(result);
+                false
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => true,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => false,
+        });
+        for result in done {
+            match result {
+                Ok(path) => self.notify(crate::i18n::trf("GIF saved to {}", &[&path.display()])),
+                Err(err) => self.show_error(tr("Recording failed"), err),
+            }
+        }
+    }
+
     /// Starts the simulation on the current screen or stops it.
     pub fn toggle_simulation(&mut self) {
+        if self.simulation.is_some() {
+            self.stop_recording();
+        }
         self.simulation = match self.simulation {
             Some(_) => None,
             None => Some(crate::simulator::Simulation::new(&self.doc.project, self.screen)),
@@ -93,6 +136,8 @@ impl Studio {
             reset_layout: false,
             assistant: crate::assistant::Assistant::default(),
             simulation: None,
+            recorder: None,
+            gif_jobs: Vec::new(),
         }
     }
 
@@ -608,6 +653,10 @@ impl eframe::App for StudioApp {
             self.studio.execute(command, false);
         }
         crate::panels::images::add_pending(ctx, &mut self.studio);
+        if let Some(recorder) = &mut self.studio.recorder {
+            recorder.receive(ctx);
+        }
+        self.studio.poll_gif_jobs();
         self.observe_changes(ctx);
         self.autosave(ctx);
         self.handle_close(ctx);
