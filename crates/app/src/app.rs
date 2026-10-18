@@ -56,6 +56,8 @@ pub struct Studio {
     pub assistant: crate::assistant::Assistant,
     /// Running simulation of the project on the canvas.
     pub simulation: Option<crate::simulator::Simulation>,
+    /// Further selected widgets (Ctrl+click), for aligning.
+    pub extra_selection: Vec<WidgetId>,
     /// GIF recording of the simulation.
     pub recorder: Option<crate::recorder::Recorder>,
     /// GIFs being encoded in the background.
@@ -63,6 +65,33 @@ pub struct Studio {
 }
 
 impl Studio {
+    /// The selected widget followed by the widgets added with Ctrl+click.
+    pub fn selection(&self) -> Vec<WidgetId> {
+        let mut ids: Vec<WidgetId> = self.selected.into_iter().collect();
+        for id in &self.extra_selection {
+            if !ids.contains(id) {
+                ids.push(*id);
+            }
+        }
+        ids
+    }
+
+    /// Adds `id` to the selection or removes it again (Ctrl+click).
+    pub fn toggle_in_selection(&mut self, id: WidgetId) {
+        if self.selected.is_none() {
+            self.select(Some(id));
+        } else if self.selected == Some(id) {
+            let next = self.extra_selection.first().copied();
+            let rest: Vec<WidgetId> = self.extra_selection.iter().skip(1).copied().collect();
+            self.select(next);
+            self.extra_selection = rest;
+        } else if let Some(index) = self.extra_selection.iter().position(|e| *e == id) {
+            self.extra_selection.remove(index);
+        } else {
+            self.extra_selection.push(id);
+        }
+    }
+
     /// Starts recording the simulated display into a GIF.
     pub fn start_recording(&mut self, now: f64) {
         if self.simulation.is_some() {
@@ -137,6 +166,7 @@ impl Studio {
             assistant: crate::assistant::Assistant::default(),
             simulation: None,
             recorder: None,
+            extra_selection: Vec::new(),
             gif_jobs: Vec::new(),
         }
     }
@@ -160,6 +190,7 @@ impl Studio {
     /// Selects a widget and shows its screen on the canvas.
     pub fn select(&mut self, id: Option<WidgetId>) {
         self.selected = id;
+        self.extra_selection.clear();
         if let Some(screen) = id.and_then(|id| self.doc.project.screen_of(id)) {
             if screen.id != self.screen {
                 self.screen = screen.id;

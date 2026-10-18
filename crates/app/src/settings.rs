@@ -68,6 +68,8 @@ pub struct AppSettings {
     pub grid_size: u32,
     pub show_grid: bool,
     pub snap_to_grid: bool,
+    /// Snap lines to the edges and centers of neighbors while moving.
+    pub smart_guides: bool,
     /// Thin outlines around every widget.
     pub show_bounds: bool,
     /// Dashed outlines for hidden widgets.
@@ -104,6 +106,7 @@ impl Default for AppSettings {
             grid_size: 10,
             show_grid: false,
             snap_to_grid: false,
+            smart_guides: true,
             show_bounds: false,
             show_hidden: true,
             show_size_label: true,
