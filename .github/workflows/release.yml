@@ -63,10 +63,22 @@ jobs:
             tar -czf "$dir.tar.gz" "$dir"
             echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
           fi
+      - name: Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}", "$env:ProgramFiles" -Filter ISCC.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          $version = "$env:GITHUB_REF_NAME".TrimStart('v')
+          & $iscc.FullName /Q "/DAppVersion=$version" "/DSourceDir=..\target\${{ matrix.target }}\release" "/DOutputDir=..\installer-out" installer\lvglab.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ env.ASSET }}
+          path: |
+            ${{ env.ASSET }}
+            installer-out/*.exe
           if-no-files-found: error
 
   release:
