@@ -129,6 +129,8 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
     }
     if let Some(command) = chosen {
         studio.push(command);
+        // If the action is cancelled, the start page comes back.
+        studio.return_to_start = true;
         close = true;
     }
     if close {
