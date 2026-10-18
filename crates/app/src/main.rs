@@ -76,6 +76,9 @@ fn main() -> eframe::Result {
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    let native = eframe::NativeOptions { viewport, ..Default::default() };
+    // LVGLAB_DATA_DIR keeps settings and layout in another folder, e.g. for
+    // documentation screenshots with a clean setup.
+    let persistence_path = std::env::var_os("LVGLAB_DATA_DIR").map(|dir| std::path::PathBuf::from(dir).join("app.ron"));
+    let native = eframe::NativeOptions { viewport, persistence_path, ..Default::default() };
     eframe::run_native("LVGLab", native, Box::new(|cc| Ok(Box::new(app::StudioApp::new(cc, options)))))
 }

@@ -4,11 +4,13 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern, open source UI designer for **LVGL 8 and 9** on **ESP32**, written in Rust.
-Design screens visually, import existing **SquareLine Studio** projects and export the UI as a
-ready-to-use library for PlatformIO or the Arduino IDE.
+Design screens visually, import existing **SquareLine Studio** projects, and LVGLab generates the
+**C code** of your UI.
 
 ![LVGLab](docs/screenshot.png)
 
+> LVGLab is written from scratch: the editor, the importer and the code generator are its own code,
+> based on LVGL's public API. No other UI designer was reverse engineered or copied.
 > LVGLab is not affiliated with LVGL LLC.
 
 ---
@@ -16,6 +18,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 ## Contents
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Compatibility](#compatibility)
 - [Getting started](#getting-started)
 - [Working with the editor](#working-with-the-editor)
@@ -53,12 +56,15 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 **Editor**
 
+- **Start page** with the recent projects (display, LVGL version, screens, last change) and the ways to begin.
+- **New project dialog**: name, display (presets, resolution, round or rectangular), LVGL version and theme.
+- **Welcome tour**: 15 steps that highlight and explain the main areas; Help → Welcome tour repeats it.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
   round display masking, zoom, pan, grid and snapping.
 - Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
 - Align and distribute the selection (or one widget in its parent); snap lines to the edges and centers of neighbors.
   Drag widgets from the palette onto the canvas.
-- Freely dockable panels: Screens, Layers, Widgets, Parameters, Style, Events, Timeline, Fonts and Images.
+- Freely dockable panels: Screens, Layers, Widgets, Parameters, Themes, Style, Events, Timeline, Fonts and Images.
   Snap them anywhere, stack them as tabs or float them as windows. The layout is remembered.
 - **Timeline**: every change becomes a named step. Click any step to jump back or forward
   (Ctrl+Z / Ctrl+Y move one step). Saves and autosaves appear as highlighted green steps.
@@ -97,6 +103,12 @@ ready-to-use library for PlatformIO or the Arduino IDE.
   All font and image data is `const`, so it stays in flash.
 - The export only rewrites generated files. It never touches your own code and removes stale generated
   files, for example of deleted screens.
+
+## Screenshots
+
+| Start page | New project | Welcome tour |
+|---|---|---|
+| ![Start page](docs/start-page.png) | ![New project](docs/new-project.png) | ![Welcome tour](docs/welcome-tour.png) |
 
 ## Compatibility
 
@@ -150,10 +162,15 @@ lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [
 | `project.lvglab` / `file.spj` | Opens a studio project, or imports a SquareLine project. |
 | `--select <widget>` | Selects a widget by name after opening. |
 | `--simulate` | Starts the simulator with the record overlay. |
-| `--dialog <name>` | Opens `new`, `preferences`, `about`, `discard`, `close` or the welcome tour (`tour`, `tour:<step>`) at start (documentation). |
+| `--dialog <name>` | Opens `start`, `new`, `preferences`, `about`, `discard`, `close` or the welcome tour (`tour`, `tour:<step>`) at start (documentation). |
 | `--screenshot <out.png>` | Renders the window into a PNG and exits (documentation, CI). |
 
-Try the bundled example: `cargo run --release -- examples/showcase/showcase.lvglab`
+Started without a project, LVGLab shows the start page (unless *Open the last project on start* is enabled
+in the preferences). The environment variable `LVGLAB_DATA_DIR` keeps settings and the panel layout in
+another folder, e.g. for screenshots with a clean setup.
+
+Try the bundled examples: `cargo run --release -- examples/dashboard/dashboard.lvglab` (round display,
+LVGL 9) or `examples/showcase/showcase.lvglab`.
 
 ## Working with the editor
 
@@ -166,6 +183,7 @@ On the first start a welcome tour explains the main areas in 15 steps; **Help �
 | **Layers** | Widget tree of the current screen. Drag rows to reorder or reparent. The eye toggles the hidden flag. |
 | **Widgets** | Palette grouped into Basic, Controls, Visualization and Containers. Click to add to the selection, or drag onto the canvas. |
 | **Parameters** | Name, position & size (px, %, content), alignment, widget properties, flex layout, flags, states, scrolling. |
+| **Themes** | LVGL's default theme (dark or light, primary and secondary color) and the color themes. |
 | **Style** | Local styles per part and state. While a state is selected, the canvas previews the widget in that state. |
 | **Events** | Trigger → action list of the selected widget. |
 | **Timeline** | History of all changes. Click a step to jump there. |
@@ -487,6 +505,20 @@ cargo clippy --workspace --all-targets         # lints
 cargo fmt --all                                # formatting
 cargo run -p lvglab-codegen --example export_spj -- my.spj out/ui   # headless SquareLine → library export
 cargo run -p lvglab-codegen --example all_widgets -- out/ui 9.6.0   # every widget type, for compile checks
+cargo run -p lvglab-codegen --example dashboard -- examples/dashboard  # writes the dashboard example
+```
+
+**Fuzz tests** run with `cargo test`. [`crates/codegen/tests/fuzz.rs`](crates/codegen/tests/fuzz.rs) builds random
+projects full of unexpected values (wrong types, extreme numbers, odd names, dangling references) and corrupts
+project and SquareLine files; loading, editing, layout and export must not panic, and the generated C must stay
+well-formed. [`crates/app/src/monkey.rs`](crates/app/src/monkey.rs) drives the real editor without a window with
+random clicks, drags, shortcuts and text; file dialogs, network requests and other programs are disabled while it
+runs. A failure prints its seed:
+
+```sh
+LVGLAB_FUZZ_SEED=1325 cargo test -p lvglab-codegen --test fuzz          # repeat one case
+LVGLAB_FUZZ_ITERATIONS=5000 cargo test -p lvglab-codegen --test fuzz    # a longer campaign
+LVGLAB_FUZZ_ITERATIONS=50 cargo test -p lvglab monkey                   # 50 monkey runs of 400 frames
 ```
 
 The generated C code is checked by compiling an export with every widget type against LVGL 8.3.11 and
