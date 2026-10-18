@@ -319,7 +319,7 @@ impl Studio {
         }
     }
 
-    fn show_error(&mut self, title: &str, message: String) {
+    pub fn show_error(&mut self, title: &str, message: String) {
         self.notify(format!("{title}: {message}"));
         self.report = Some(Report { tone: Tone::Danger, title: title.to_owned(), message, lines: Vec::new() });
     }

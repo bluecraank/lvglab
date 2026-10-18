@@ -324,6 +324,23 @@ fn simulate(
     display: Rect,
     to_display: &impl Fn(Pos2) -> (i32, i32),
 ) {
+    let now = ui.input(|i| i.time);
+    let display_size = (studio.doc.project.display.width, studio.doc.project.display.height);
+    if let Some(recorder) = &mut studio.recorder {
+        recorder.request(ui.ctx(), now, display.intersect(rect), display_size);
+        let seconds = recorder.seconds(now);
+        let label = format!("⏺ REC {}:{:02}", seconds as u32 / 60, seconds as u32 % 60);
+        painter.text(
+            rect.left_top() + vec2(10.0, 8.0),
+            egui::Align2::LEFT_TOP,
+            label,
+            egui::FontId::proportional(13.0),
+            visuals::DANGER,
+        );
+        if recorder.is_full(now) {
+            studio.stop_recording();
+        }
+    }
     let Some(sim) = &mut studio.simulation else { return };
     let nodes = &studio.canvas.nodes;
     let now = ui.input(|i| i.time);
@@ -687,6 +704,24 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
         let mut fresh = crate::simulator::Simulation::new(&studio.doc.project, screen);
         fresh.record = record;
         studio.simulation = Some(fresh);
+    }
+    let now = ui.input(|i| i.time);
+    match &studio.recorder {
+        Some(recorder) => {
+            let seconds = recorder.seconds(now) as u32;
+            let text =
+                egui::RichText::new(format!("■ GIF {}:{:02}", seconds / 60, seconds % 60)).color(visuals::DANGER);
+            if ui.button(text).on_hover_text(tr("Stop and save the recording")).clicked() {
+                studio.stop_recording();
+            }
+        }
+        None => {
+            let hint =
+                trf("Records the display as an animated GIF (up to {} s)", &[&(crate::recorder::MAX_SECONDS as u32)]);
+            if ui.button("⏺ GIF").on_hover_text(hint).clicked() {
+                studio.start_recording(now);
+            }
+        }
     }
     if let Some(last) = studio.simulation.as_ref().and_then(|s| s.log.last()) {
         crate::widgets::muted(ui, last.clone());
