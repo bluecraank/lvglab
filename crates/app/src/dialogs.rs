@@ -2,7 +2,7 @@
 
 use eframe::egui;
 use lvglab_model::Project;
-use lvglab_model::project::{DisplayShape, LvglVersion};
+use lvglab_model::project::{DisplaySettings, DisplayShape, LvglVersion};
 
 use crate::app::Studio;
 use crate::assistant::effort_label;
@@ -25,11 +25,82 @@ const PRESETS: &[(&str, u32, u32, DisplayShape)] = &[
 ];
 
 pub fn show(ctx: &egui::Context, studio: &mut Studio) {
+    new_project(ctx, studio);
     project_settings(ctx, studio);
     preferences(ctx, studio);
     about(ctx, studio);
     report(ctx, studio);
     confirm_discard(ctx, studio);
+}
+
+/// File → New: the settings a project needs from the start.
+fn new_project(ctx: &egui::Context, studio: &mut Studio) {
+    let Some(draft) = &mut studio.new_project else { return };
+    let actions = [Action::primary(tr("Create")), Action::secondary(tr("Cancel"))];
+    let message = tr("Choose the display and the LVGL release. You can change them later in the project settings.");
+    let choice = modal::show(ctx, "new_project", Tone::Info, tr("New project"), message, &actions, |ui| {
+        ui.add_space(14.0);
+        grid(ui, "new_project_grid", |ui| {
+            label(ui, tr("Name"), "");
+            ui.add(egui::TextEdit::singleline(&mut draft.name).desired_width(240.0));
+            ui.end_row();
+            display_rows(ui, "new_project", &mut draft.display);
+            label(
+                ui,
+                tr("LVGL version"),
+                tr("LVGL 9 has no meter and no color wheel; the export reports what it changes."),
+            );
+            widgets::choice(ui, "new_lvgl_version", &mut draft.lvgl_version, LvglVersion::ALL, LvglVersion::label);
+            ui.end_row();
+            label(ui, tr("Theme"), "");
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut draft.theme.dark, true, tr("Dark"));
+                ui.selectable_value(&mut draft.theme.dark, false, tr("Light"));
+            });
+            ui.end_row();
+        });
+    });
+    match choice {
+        Some(0) => {
+            let project = Box::new(draft.clone());
+            studio.new_project = None;
+            studio.push(Command::CreateProject(project));
+        }
+        Some(_) => studio.new_project = None,
+        None => {}
+    }
+}
+
+/// Preset, resolution and shape rows of a settings grid.
+fn display_rows(ui: &mut egui::Ui, id: &str, display: &mut DisplaySettings) {
+    label(ui, tr("Preset"), "");
+    egui::ComboBox::from_id_salt((id, "preset")).selected_text(tr("Choose…")).width(220.0).show_ui(ui, |ui| {
+        for (name, w, h, shape) in PRESETS {
+            if ui.selectable_label(false, *name).clicked() {
+                display.width = *w;
+                display.height = *h;
+                display.shape = *shape;
+            }
+        }
+    });
+    ui.end_row();
+    label(ui, tr("Resolution"), tr("Width × height of the LVGL display in pixels."));
+    ui.horizontal(|ui| {
+        ui.add(egui::DragValue::new(&mut display.width).range(32..=2048).suffix(" px"));
+        ui.label("×");
+        ui.add(egui::DragValue::new(&mut display.height).range(32..=2048).suffix(" px"));
+        if ui.small_button("↔").on_hover_text(tr("Swap width and height")).clicked() {
+            std::mem::swap(&mut display.width, &mut display.height);
+        }
+    });
+    ui.end_row();
+    label(ui, tr("Shape"), "");
+    ui.horizontal(|ui| {
+        for shape in DisplayShape::ALL {
+            ui.selectable_value(&mut display.shape, *shape, tr(shape.label()));
+        }
+    });
+    ui.end_row();
 }
 
 fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
@@ -59,39 +130,7 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
                 });
             });
             section(ui, "ps_display", tr("Display"), true, |ui| {
-                grid(ui, "ps_display_grid", |ui| {
-                    label(ui, tr("Preset"), "");
-                    egui::ComboBox::from_id_salt("preset").selected_text(tr("Choose…")).width(220.0).show_ui(
-                        ui,
-                        |ui| {
-                            for (name, w, h, shape) in PRESETS {
-                                if ui.selectable_label(false, *name).clicked() {
-                                    p.display.width = *w;
-                                    p.display.height = *h;
-                                    p.display.shape = *shape;
-                                }
-                            }
-                        },
-                    );
-                    ui.end_row();
-                    label(ui, tr("Resolution"), tr("Width × height of the LVGL display in pixels."));
-                    ui.horizontal(|ui| {
-                        ui.add(egui::DragValue::new(&mut p.display.width).range(32..=2048).suffix(" px"));
-                        ui.label("×");
-                        ui.add(egui::DragValue::new(&mut p.display.height).range(32..=2048).suffix(" px"));
-                        if ui.small_button("↔").on_hover_text(tr("Swap width and height")).clicked() {
-                            std::mem::swap(&mut p.display.width, &mut p.display.height);
-                        }
-                    });
-                    ui.end_row();
-                    label(ui, tr("Shape"), "");
-                    ui.horizontal(|ui| {
-                        for shape in DisplayShape::ALL {
-                            ui.selectable_value(&mut p.display.shape, *shape, tr(shape.label()));
-                        }
-                    });
-                    ui.end_row();
-                });
+                grid(ui, "ps_display_grid", |ui| display_rows(ui, "ps", &mut p.display));
             });
             section(ui, "ps_export", tr("Library export"), true, |ui| {
                 grid(ui, "ps_export_grid", |ui| {

@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use lvglab_model::project::{DisplaySettings, LvglVersion, ThemeSettings};
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Language;
@@ -95,6 +96,17 @@ pub struct AppSettings {
     pub ai_model: String,
     pub ai_effort: String,
     pub recent: Vec<PathBuf>,
+    /// Choices of the last new project, offered again.
+    pub new_project: NewProjectDefaults,
+}
+
+/// Display, LVGL release and theme of the last project created with File → New.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NewProjectDefaults {
+    pub display: DisplaySettings,
+    pub lvgl_version: LvglVersion,
+    pub theme: ThemeSettings,
 }
 
 impl Default for AppSettings {
@@ -122,6 +134,7 @@ impl Default for AppSettings {
             ai_model: lvglab_ai::MODELS[0].0.to_owned(),
             ai_effort: "medium".to_owned(),
             recent: Vec::new(),
+            new_project: NewProjectDefaults::default(),
         }
     }
 }

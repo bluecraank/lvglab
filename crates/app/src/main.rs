@@ -27,7 +27,7 @@ pub struct LaunchOptions {
     pub file: Option<PathBuf>,
     /// Name of a widget to select after opening.
     pub select: Option<String>,
-    /// Opens a dialog at start (`preferences`, `about`, `discard`, `close`);
+    /// Opens a dialog at start (`preferences`, `about`, `new`, `discard`, `close`);
     /// used for documentation screenshots.
     pub dialog: Option<String>,
     /// Brings a panel to the front (`assistant`, `style`, ...).
