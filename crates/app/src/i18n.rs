@@ -48,7 +48,7 @@ impl Language {
     }
 
     /// The embedded translation table; `None` for English.
-    fn table(self) -> Option<&'static HashMap<String, String>> {
+    pub(crate) fn table(self) -> Option<&'static HashMap<String, String>> {
         static TABLES: OnceLock<[HashMap<String, String>; 3]> = OnceLock::new();
         let tables = TABLES.get_or_init(|| {
             let parse = |code: &str, json: &str| -> HashMap<String, String> {

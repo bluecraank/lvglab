@@ -98,6 +98,8 @@ pub struct AppSettings {
     pub recent: Vec<PathBuf>,
     /// Choices of the last new project, offered again.
     pub new_project: NewProjectDefaults,
+    /// The welcome tour was finished or skipped.
+    pub tour_done: bool,
 }
 
 /// Display, LVGL release and theme of the last project created with File → New.
@@ -135,6 +137,7 @@ impl Default for AppSettings {
             ai_effort: "medium".to_owned(),
             recent: Vec::new(),
             new_project: NewProjectDefaults::default(),
+            tour_done: false,
         }
     }
 }

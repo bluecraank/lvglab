@@ -49,6 +49,10 @@ pub struct Studio {
     pub confirm_discard: Option<Command>,
     /// The open "New project" dialog.
     pub new_project: Option<crate::commands::NewProject>,
+    /// Current step of the welcome tour.
+    pub tour: Option<usize>,
+    /// Where the areas the tour points at were drawn this frame.
+    pub anchors: crate::tour::Anchors,
     pub settings: AppSettings,
     pub assets: AssetCache,
     pub show_project_settings: bool,
@@ -163,6 +167,8 @@ impl Studio {
             report: None,
             confirm_discard: None,
             new_project: None,
+            tour: None,
+            anchors: crate::tour::Anchors::new(),
             settings,
             assets: AssetCache::default(),
             show_project_settings: false,
@@ -340,6 +346,11 @@ impl StudioApp {
         if dialog == Some("new") {
             studio.execute(Command::NewProject, true);
         }
+        if let Some(step) = dialog.and_then(|d| d.strip_prefix("tour")) {
+            studio.tour = Some(step.trim_start_matches(':').parse::<usize>().map_or(0, |s| s.saturating_sub(1)));
+        } else if dialog.is_none() && options.screenshot.is_none() && !studio.settings.tour_done {
+            studio.tour = Some(0);
+        }
         Self {
             studio,
             dock,
@@ -398,6 +409,10 @@ impl StudioApp {
                 self.edit_menu(ui);
                 self.view_menu(ui);
                 ui.menu_button(tr("Help"), |ui| {
+                    if ui.button(tr("Welcome tour")).clicked() {
+                        self.studio.tour = Some(0);
+                        ui.close_menu();
+                    }
                     if ui.button(tr("About LVGLab")).clicked() {
                         self.studio.show_about = true;
                         ui.close_menu();
@@ -409,7 +424,9 @@ impl StudioApp {
                     .fill(visuals::ACCENT)
                     .small()
                     .corner_radius(4);
-                if ui.add(export).on_hover_text("Ctrl+E").clicked() {
+                let export = ui.add(export).on_hover_text("Ctrl+E");
+                self.studio.anchors.insert(crate::tour::Anchor::Export, export.rect);
+                if export.clicked() {
                     self.studio.push(Command::ExportLibrary);
                 }
             });
@@ -418,32 +435,39 @@ impl StudioApp {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
                 let s = &mut self.studio;
+                let (undo, redo) = (s.timeline.can_undo(), s.timeline.can_redo());
                 let mut button = |ui: &mut egui::Ui, text: &str, tip: &str, command: Command| {
                     if ui.button(text).on_hover_text(tip).clicked() {
                         s.push(command);
                     }
                 };
-                button(ui, tr("New"), "Ctrl+N", Command::NewProject);
-                button(ui, tr("Open"), "Ctrl+O", Command::Open);
-                button(ui, tr("Save"), "Ctrl+S", Command::Save);
-                ui.separator();
-                let (undo, redo) = (s.timeline.can_undo(), s.timeline.can_redo());
-                if ui
-                    .add_enabled(undo, egui::Button::new("⟲"))
-                    .on_hover_text(format!("{} (Ctrl+Z)", tr("Undo")))
-                    .clicked()
-                {
+                let mut undo_clicked = false;
+                let mut redo_clicked = false;
+                let files = ui.horizontal(|ui| {
+                    button(ui, tr("New"), "Ctrl+N", Command::NewProject);
+                    button(ui, tr("Open"), "Ctrl+O", Command::Open);
+                    button(ui, tr("Save"), "Ctrl+S", Command::Save);
+                    ui.separator();
+                    undo_clicked = ui
+                        .add_enabled(undo, egui::Button::new("⟲"))
+                        .on_hover_text(format!("{} (Ctrl+Z)", tr("Undo")))
+                        .clicked();
+                    redo_clicked = ui
+                        .add_enabled(redo, egui::Button::new("⟳"))
+                        .on_hover_text(format!("{} (Ctrl+Y)", tr("Redo")))
+                        .clicked();
+                });
+                s.anchors.insert(crate::tour::Anchor::FileButtons, files.response.rect);
+                if undo_clicked {
                     s.push(Command::Undo);
                 }
-                if ui
-                    .add_enabled(redo, egui::Button::new("⟳"))
-                    .on_hover_text(format!("{} (Ctrl+Y)", tr("Redo")))
-                    .clicked()
-                {
+                if redo_clicked {
                     s.push(Command::Redo);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(tr("Project settings")).clicked() {
+                    let settings = ui.button(tr("Project settings"));
+                    s.anchors.insert(crate::tour::Anchor::ProjectSettings, settings.rect);
+                    if settings.clicked() {
                         s.show_project_settings = true;
                     }
                     ui.label(egui::RichText::new(s.doc.title()).strong());
@@ -745,6 +769,7 @@ impl StudioApp {
 impl eframe::App for StudioApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame += 1;
+        self.studio.anchors.clear();
         self.apply_settings(ctx);
         self.studio.poll_assistant();
         let dir = self.studio.doc.dir().map(std::path::Path::to_path_buf);
@@ -752,6 +777,21 @@ impl eframe::App for StudioApp {
 
         self.top_bar(ctx);
         self.status_bar(ctx);
+        // The tour brings the tab it explains to the front; the panels about the
+        // selection show the first widget of the screen if nothing is selected.
+        if let Some(panel) = crate::tour::current_panel(&self.studio) {
+            if let Some(location) = self.dock.find_tab(&panel) {
+                self.dock.set_active_tab(location);
+            }
+            let about_selection = matches!(panel, Panel::Layers | Panel::Parameters | Panel::Style | Panel::Events);
+            if about_selection && self.studio.selected.is_none() {
+                let first = self.studio.doc.project.widget(self.studio.screen).and_then(|s| s.children.first());
+                let first = first.map(|w| w.id);
+                if first.is_some() {
+                    self.studio.select(first);
+                }
+            }
+        }
         let style = dock_style(ctx);
         DockArea::new(&mut self.dock)
             .style(style)
@@ -759,6 +799,7 @@ impl eframe::App for StudioApp {
             .show_leaf_close_all_buttons(false)
             .show(ctx, &mut Viewer { studio: &mut self.studio });
         dialogs::show(ctx, &mut self.studio);
+        crate::tour::show(ctx, &mut self.studio);
         self.shortcuts(ctx);
 
         for command in std::mem::take(&mut self.studio.commands) {
@@ -799,6 +840,7 @@ impl TabViewer for Viewer<'_> {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Panel) {
+        self.studio.anchors.insert(crate::tour::Anchor::Panel(*tab), ui.clip_rect());
         panels::show(*tab, ui, self.studio);
     }
 
