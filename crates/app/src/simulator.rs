@@ -7,8 +7,12 @@
 //! The record overlay draws the pointer and every click, for screen
 //! recordings of the simulated device.
 
+mod live;
+
+pub use live::LiveMode;
+
 use eframe::egui::{self, Color32, Pos2, Stroke};
-use lvglab_model::event::{Action, EventTrigger, ModifyOp};
+use lvglab_model::event::{Action, EventTrigger, ModifyOp, ScreenAnim};
 use lvglab_model::flags::{ObjFlag, ObjState, StateMask};
 use lvglab_model::layout as lay;
 use lvglab_model::prop::PropValue;
@@ -38,6 +42,80 @@ struct Press {
 struct ScheduledScreen {
     at: f64,
     screen: WidgetId,
+    anim: ScreenAnim,
+    duration: f64,
+}
+
+/// A running screen load animation (`lv_scr_load_anim`).
+#[derive(Clone, Copy, Debug)]
+pub struct Transition {
+    pub from: WidgetId,
+    pub anim: ScreenAnim,
+    start: f64,
+    duration: f64,
+}
+
+/// How the old and the new screen are drawn at one moment of a transition.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransitionFrame {
+    /// Offsets as fractions of the display size.
+    pub old_offset: (f32, f32),
+    pub new_offset: (f32, f32),
+    pub old_opacity: f32,
+    pub new_opacity: f32,
+    /// The new screen is drawn above the old one.
+    pub new_on_top: bool,
+}
+
+impl Transition {
+    /// Progress from 0 to 1 with LVGL's ease-out path.
+    fn progress(&self, now: f64) -> f32 {
+        let t = (((now - self.start) / self.duration.max(0.001)) as f32).clamp(0.0, 1.0);
+        1.0 - (1.0 - t) * (1.0 - t)
+    }
+
+    pub fn frame(&self, now: f64) -> TransitionFrame {
+        let p = self.progress(now);
+        let mut frame = TransitionFrame {
+            old_offset: (0.0, 0.0),
+            new_offset: (0.0, 0.0),
+            old_opacity: 1.0,
+            new_opacity: 1.0,
+            new_on_top: true,
+        };
+        // Direction the screens move to.
+        let dir = |anim: ScreenAnim| match anim {
+            ScreenAnim::OverLeft | ScreenAnim::MoveLeft | ScreenAnim::OutLeft => (-1.0, 0.0),
+            ScreenAnim::OverRight | ScreenAnim::MoveRight | ScreenAnim::OutRight => (1.0, 0.0),
+            ScreenAnim::OverTop | ScreenAnim::MoveTop | ScreenAnim::OutTop => (0.0, -1.0),
+            _ => (0.0, 1.0),
+        };
+        let (dx, dy) = dir(self.anim);
+        match self.anim {
+            ScreenAnim::OverLeft | ScreenAnim::OverRight | ScreenAnim::OverTop | ScreenAnim::OverBottom => {
+                frame.new_offset = (-dx * (1.0 - p), -dy * (1.0 - p));
+            }
+            ScreenAnim::MoveLeft | ScreenAnim::MoveRight | ScreenAnim::MoveTop | ScreenAnim::MoveBottom => {
+                frame.new_offset = (-dx * (1.0 - p), -dy * (1.0 - p));
+                frame.old_offset = (dx * p, dy * p);
+            }
+            ScreenAnim::OutLeft | ScreenAnim::OutRight | ScreenAnim::OutTop | ScreenAnim::OutBottom => {
+                frame.old_offset = (dx * p, dy * p);
+                frame.new_on_top = false;
+            }
+            ScreenAnim::FadeOn => frame.new_opacity = p,
+            ScreenAnim::FadeOut => {
+                frame.old_opacity = 1.0 - p;
+                frame.new_on_top = false;
+            }
+            ScreenAnim::None => {}
+        }
+        frame
+    }
+
+    fn finished(&self, now: f64) -> bool {
+        now - self.start >= self.duration
+    }
 }
 
 pub struct Simulation {
@@ -49,6 +127,11 @@ pub struct Simulation {
     pub log: Vec<String>,
     press: Option<Press>,
     scheduled: Vec<ScheduledScreen>,
+    /// The screen load animation that is running.
+    pub transition: Option<Transition>,
+    /// Test data for gauges and numeric labels.
+    pub live_mode: LiveMode,
+    live: live::LiveData,
     /// Click positions (screen coordinates) and times for ripples.
     clicks: Vec<(Pos2, f64)>,
 }
@@ -62,6 +145,9 @@ impl Simulation {
             log: Vec::new(),
             press: None,
             scheduled: Vec::new(),
+            transition: None,
+            live_mode: LiveMode::Off,
+            live: live::LiveData::collect(project),
             clicks: Vec::new(),
         };
         simulation.fire(screen, EventTrigger::ScreenLoaded, 0.0);
@@ -79,14 +165,29 @@ impl Simulation {
 
     /// True while something changes over time and the canvas must repaint.
     pub fn is_animating(&self, now: f64) -> bool {
-        self.press.is_some() || !self.scheduled.is_empty() || self.clicks.iter().any(|(_, t)| now - t < RIPPLE_S)
+        self.press.is_some()
+            || !self.scheduled.is_empty()
+            || self.transition.is_some()
+            || self.live_mode == LiveMode::Wave
+            || self.clicks.iter().any(|(_, t)| now - t < RIPPLE_S)
     }
 
     pub fn show_screen(&mut self, screen: WidgetId, now: f64) {
+        self.load_screen(screen, ScreenAnim::None, 0.0, now);
+    }
+
+    /// Loads `screen` like `lv_scr_load_anim`.
+    fn load_screen(&mut self, screen: WidgetId, anim: ScreenAnim, duration: f64, now: f64) {
         if screen == self.screen || self.project.widget(screen).is_none() {
             return;
         }
         let old = self.screen;
+        self.transition = (anim != ScreenAnim::None && duration > 0.0).then_some(Transition {
+            from: old,
+            anim,
+            start: now,
+            duration,
+        });
         self.fire(old, EventTrigger::ScreenUnloaded, now);
         self.screen = screen;
         self.press = None;
@@ -105,7 +206,16 @@ impl Simulation {
     }
 
     /// Advances timers: long presses and delayed screen changes.
+    /// True if the project has values that live data can animate.
+    pub fn has_live_values(&self) -> bool {
+        !self.live.is_empty()
+    }
+
     pub fn tick(&mut self, now: f64) {
+        if self.live_mode != LiveMode::Off {
+            let pressed = self.pressed();
+            self.live.apply(&mut self.project, self.live_mode, now, pressed);
+        }
         if let Some(press) = &mut self.press {
             if !press.long_fired && !press.adjusts_value && now - press.time >= LONG_PRESS_S {
                 press.long_fired = true;
@@ -115,7 +225,10 @@ impl Simulation {
         }
         if let Some(index) = self.scheduled.iter().position(|s| s.at <= now) {
             let change = self.scheduled.remove(index);
-            self.show_screen(change.screen, now);
+            self.load_screen(change.screen, change.anim, change.duration, now);
+        }
+        if self.transition.is_some_and(|t| t.finished(now)) {
+            self.transition = None;
         }
         self.clicks.retain(|(_, t)| now - t < RIPPLE_S);
     }
@@ -140,6 +253,9 @@ impl Simulation {
     }
 
     pub fn press(&mut self, nodes: &[NodeInfo], x: i32, y: i32, now: f64) {
+        if self.transition.is_some() {
+            return;
+        }
         let Some((id, rect)) = self.target(nodes, x, y) else { return };
         let kind = self.project.widget(id).map(|w| w.kind);
         let adjusts_value = matches!(kind, Some(WidgetKind::Slider | WidgetKind::Arc));
@@ -255,9 +371,14 @@ impl Simulation {
 
     fn run(&mut self, action: &Action, now: f64) {
         match action {
-            Action::ChangeScreen { screen: Some(screen), delay_ms, .. } => {
+            Action::ChangeScreen { screen: Some(screen), anim, time_ms, delay_ms } => {
                 self.log(format!("→ {}", self.name(*screen)));
-                self.scheduled.push(ScheduledScreen { at: now + f64::from(*delay_ms) / 1000.0, screen: *screen });
+                self.scheduled.push(ScheduledScreen {
+                    at: now + f64::from(*delay_ms) / 1000.0,
+                    screen: *screen,
+                    anim: *anim,
+                    duration: f64::from(*time_ms) / 1000.0,
+                });
             }
             Action::CallFunction { name } => self.log(format!("{name}(e)")),
             Action::ModifyFlag { target: Some(target), flag, op } => {
@@ -368,6 +489,19 @@ mod tests {
             hidden: false,
             movable: true,
         }
+    }
+
+    #[test]
+    fn transitions_move_the_screens() {
+        let t = Transition { from: WidgetId(1), anim: ScreenAnim::MoveLeft, start: 0.0, duration: 1.0 };
+        let start = t.frame(0.0);
+        assert_eq!((start.new_offset, start.old_offset), ((1.0, 0.0), (0.0, 0.0)));
+        let end = t.frame(1.0);
+        assert_eq!((end.new_offset, end.old_offset), ((0.0, 0.0), (-1.0, 0.0)));
+        let fade = Transition { anim: ScreenAnim::FadeOn, ..t }.frame(1.0);
+        assert_eq!(fade.new_opacity, 1.0);
+        let out = Transition { anim: ScreenAnim::OutTop, ..t }.frame(0.5);
+        assert!(!out.new_on_top && out.old_offset.1 < 0.0);
     }
 
     #[test]
