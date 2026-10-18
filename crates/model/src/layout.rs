@@ -178,6 +178,7 @@ impl<'a> Engine<'_, 'a> {
         let active = self
             .focus
             .and_then(|f| widget.children.iter().find(|c| c.find(f).is_some()))
+            .or_else(|| widget.children.get(widget.prop_int("active_tab").max(0) as usize))
             .unwrap_or(&widget.children[0]);
         vec![active]
     }

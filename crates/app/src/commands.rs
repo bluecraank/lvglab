@@ -74,6 +74,8 @@ pub enum Command {
     Undo,
     Redo,
     JumpTo(usize),
+    /// Takes the current screen from timeline step `index`; all other screens stay as they are.
+    RestoreScreen(usize),
     AddScreen,
     AddComponent,
     /// Puts the top level objects of a component into one container.
@@ -195,6 +197,17 @@ impl Studio {
             Command::JumpTo(index) => {
                 if let Some(project) = self.timeline.jump(index) {
                     self.restore(project);
+                }
+            }
+            Command::RestoreScreen(index) => {
+                let screen = self.screen;
+                let restored = self
+                    .timeline
+                    .entries()
+                    .get(index)
+                    .is_some_and(|entry| self.doc.project.restore_root(&entry.project, screen));
+                if restored {
+                    self.notify(trf("Restored this screen from step {}.", &[&(index + 1)]));
                 }
             }
             Command::AddScreen => {

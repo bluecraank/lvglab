@@ -1156,7 +1156,7 @@ impl<'a> Renderer<'a> {
                     vec2(bar.width() / n, bar.height()),
                 )
             };
-            let active = i == 0;
+            let active = i == widget.prop_int("active_tab").max(0) as usize;
             let mut look = bar_look.clone();
             look.text_align = Align::Center;
             let mut text_cell = cell;

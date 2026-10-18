@@ -57,6 +57,8 @@ pub struct Studio {
     pub start_page: Option<Vec<crate::start::Entry>>,
     /// The open merge wizard.
     pub merge: Option<crate::merge_dialog::MergeWizard>,
+    /// The timeline shows only the steps that changed the current screen.
+    pub timeline_this_screen: bool,
     /// The open search window (Ctrl+F).
     pub search: Option<crate::search_dialog::SearchState>,
     /// A running screenshot export.
@@ -187,6 +189,7 @@ impl Studio {
             start_page: None,
             merge: None,
             search: None,
+            timeline_this_screen: false,
             shots: None,
             exit_requested: false,
             return_to_start: false,

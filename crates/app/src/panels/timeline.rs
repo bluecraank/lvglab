@@ -23,7 +23,9 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
             studio.push(Command::Redo);
         }
         ui.label(trf("Step {} of {}", &[&(current + 1), &count]));
-        if current + 1 < count {
+        ui.checkbox(&mut studio.timeline_this_screen, tr("This screen only"))
+            .on_hover_text(tr("Shows the steps that changed this screen. A click restores only this screen."));
+        if current + 1 < count && !studio.timeline_this_screen {
             ui.colored_label(visuals::WARNING, tr("A new change discards the later steps."));
         }
     });
@@ -32,9 +34,18 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let scroll_to_current = ui.memory(|m| m.data.get_temp::<usize>(ui.id()).is_none_or(|last| last != count));
     egui::ScrollArea::horizontal().auto_shrink([false, true]).stick_to_right(true).show(ui, |ui| {
         ui.horizontal(|ui| {
-            for (index, entry) in studio.timeline.entries().iter().enumerate() {
+            let screen = studio.screen;
+            let entries = studio.timeline.entries();
+            let this_screen = studio.timeline_this_screen;
+            // Steps that changed the screen, and the one that matches its state now.
+            let changed =
+                |i: usize| i == 0 || entries[i].project.widget(screen) != entries[i - 1].project.widget(screen);
+            let visible: Vec<usize> = (0..count).filter(|&i| !this_screen || changed(i)).collect();
+            let shown_current = visible.iter().copied().rfind(|&i| i <= current).unwrap_or(current);
+            for (position, &index) in visible.iter().enumerate() {
+                let entry = &entries[index];
                 let (rect, response) = ui.allocate_exact_size(vec2(CARD_WIDTH, 52.0), Sense::click());
-                let is_current = index == current;
+                let is_current = index == if this_screen { shown_current } else { current };
                 let future = index > current;
                 let saved = entry.kind != EntryKind::Change;
                 let visuals = ui.style().interact(&response);
@@ -78,12 +89,16 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
                 );
                 let response = response.on_hover_text(&entry.label);
                 if response.clicked() && !is_current {
-                    studio.commands.push(Command::JumpTo(index));
+                    studio.commands.push(if this_screen {
+                        Command::RestoreScreen(index)
+                    } else {
+                        Command::JumpTo(index)
+                    });
                 }
                 if is_current && scroll_to_current {
                     response.scroll_to_me(Some(egui::Align::Max));
                 }
-                if index + 1 < count {
+                if position + 1 < visible.len() {
                     let (line, _) = ui.allocate_exact_size(vec2(10.0, 52.0), Sense::hover());
                     ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0_f32, Color32::from_gray(110)));
                 }
