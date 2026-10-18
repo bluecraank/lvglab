@@ -76,7 +76,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound
   to a theme color follow `ui_theme_set()` at runtime.
 - **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.
-- Multi language UI (English, German), light and dark appearance.
+- Multi language UI (English, German, Spanish, French), light and dark appearance.
 - Project settings: LVGL version, resolution (with presets), round or rectangular display, theme.
 
 **Export**
@@ -401,13 +401,14 @@ MyProject/
 ## Translations
 
 UI texts are written in English in the code and translated through
-[`crates/app/locales/<language>.json`](crates/app/locales/de.json). Each file maps English to the
-target language and is embedded at build time. Missing entries fall back to English.
+[`crates/app/locales/<language>.json`](crates/app/locales/) (`de`, `es`, `fr`). Each file maps English
+to the target language and is embedded at build time. Missing entries fall back to English; a test
+checks that every language has every text and keeps the `{}` placeholders.
 
 To add a language:
 
-1. Copy `crates/app/locales/de.json` to e.g. `fr.json` and translate the values. Keep `{}` placeholders.
-2. Add the language to `Language` in [`crates/app/src/i18n.rs`](crates/app/src/i18n.rs).
+1. Copy `crates/app/locales/de.json` to e.g. `it.json` and translate the values. Keep `{}` placeholders.
+2. Add the language to `Language` in [`crates/app/src/i18n.rs`](crates/app/src/i18n.rs) (name, code and table).
 
 ## Architecture
 

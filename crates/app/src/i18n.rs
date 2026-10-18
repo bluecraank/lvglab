@@ -15,23 +15,56 @@ pub enum Language {
     #[default]
     English,
     German,
+    Spanish,
+    French,
 }
 
 impl Language {
-    pub const ALL: [Self; 2] = [Self::English, Self::German];
+    pub const ALL: [Self; 4] = [Self::English, Self::German, Self::Spanish, Self::French];
 
     /// Name of the language in itself.
     pub fn native_name(self) -> &'static str {
         match self {
             Self::English => "English",
             Self::German => "Deutsch",
+            Self::Spanish => "Español",
+            Self::French => "Français",
+        }
+    }
+
+    /// ISO 639-1 code, as used for the file name in `locales/`.
+    fn code(self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::German => "de",
+            Self::Spanish => "es",
+            Self::French => "fr",
         }
     }
 
     pub fn from_system() -> Self {
-        match sys_locale::get_locale() {
-            Some(locale) if locale.to_ascii_lowercase().starts_with("de") => Self::German,
-            _ => Self::English,
+        let locale = sys_locale::get_locale().unwrap_or_default().to_ascii_lowercase();
+        Self::ALL.into_iter().find(|l| *l != Self::English && locale.starts_with(l.code())).unwrap_or(Self::English)
+    }
+
+    /// The embedded translation table; `None` for English.
+    fn table(self) -> Option<&'static HashMap<String, String>> {
+        static TABLES: OnceLock<[HashMap<String, String>; 3]> = OnceLock::new();
+        let tables = TABLES.get_or_init(|| {
+            let parse = |code: &str, json: &str| -> HashMap<String, String> {
+                serde_json::from_str(json).unwrap_or_else(|err| panic!("locales/{code}.json is invalid: {err}"))
+            };
+            [
+                parse("de", include_str!("../locales/de.json")),
+                parse("es", include_str!("../locales/es.json")),
+                parse("fr", include_str!("../locales/fr.json")),
+            ]
+        });
+        match self {
+            Self::English => None,
+            Self::German => Some(&tables[0]),
+            Self::Spanish => Some(&tables[1]),
+            Self::French => Some(&tables[2]),
         }
     }
 }
@@ -43,18 +76,13 @@ pub fn set_language(language: Language) {
 }
 
 pub fn language() -> Language {
-    match CURRENT.load(Ordering::Relaxed) {
-        1 => Language::German,
-        _ => Language::English,
-    }
+    let index = usize::from(CURRENT.load(Ordering::Relaxed));
+    Language::ALL.get(index).copied().unwrap_or_default()
 }
 
 /// Translates an English UI text into the current language.
 pub fn tr(text: &'static str) -> &'static str {
-    match language() {
-        Language::English => text,
-        Language::German => german().get(text).map_or(text, String::as_str),
-    }
+    language().table().and_then(|t| t.get(text)).map_or(text, String::as_str)
 }
 
 /// Translates a text with `{}` placeholders and fills them in order.
@@ -73,13 +101,6 @@ pub fn trf(text: &'static str, args: &[&dyn std::fmt::Display]) -> String {
     out
 }
 
-fn german() -> &'static HashMap<String, String> {
-    static TABLE: OnceLock<HashMap<String, String>> = OnceLock::new();
-    TABLE.get_or_init(|| serde_json::from_str(GERMAN).expect("locales/de.json is valid JSON"))
-}
-
-const GERMAN: &str = include_str!("../locales/de.json");
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,9 +116,21 @@ mod tests {
     }
 
     #[test]
-    fn german_file_keeps_placeholders() {
-        for (english, german) in super::german() {
-            assert_eq!(english.matches("{}").count(), german.matches("{}").count(), "{english}");
+    fn translations_are_complete_and_keep_placeholders() {
+        let german = Language::German.table().unwrap();
+        for language in [Language::Spanish, Language::French] {
+            let table = language.table().unwrap();
+            for key in german.keys() {
+                assert!(table.contains_key(key), "{language:?} lacks {key:?}");
+            }
+            assert_eq!(table.len(), german.len(), "{language:?} has extra texts");
         }
+        for language in [Language::German, Language::Spanish, Language::French] {
+            for (english, translated) in language.table().unwrap() {
+                assert_eq!(english.matches("{}").count(), translated.matches("{}").count(), "{language:?}: {english}");
+            }
+        }
+        assert_eq!(Language::French.table().unwrap()["Save"], "Enregistrer");
+        assert_eq!(Language::Spanish.table().unwrap()["Save"], "Guardar");
     }
 }
