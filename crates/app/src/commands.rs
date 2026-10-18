@@ -51,6 +51,8 @@ pub enum Command {
     /// Asks for the settings of a new project.
     NewProject,
     CreateProject(Box<NewProject>),
+    /// The start page with the recent projects.
+    ShowStartPage,
     Open,
     OpenPath(PathBuf),
     ImportSquareLine,
@@ -106,6 +108,7 @@ impl Studio {
         }
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
+            Command::ShowStartPage => self.start_page = Some(crate::start::entries(&self.settings.recent)),
             Command::CreateProject(project) => {
                 self.settings.new_project = project.defaults();
                 self.load_document(Document::new(project.build(), None), tr("New project"));
