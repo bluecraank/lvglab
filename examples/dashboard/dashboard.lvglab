@@ -1,0 +1,445 @@
+{
+  "format_version": 1,
+  "name": "Dashboard",
+  "lvgl_version": "9.6.0",
+  "display": {
+    "width": 466,
+    "height": 466,
+    "shape": "CIRCLE"
+  },
+  "theme": {
+    "dark": true,
+    "primary": "ORANGE",
+    "secondary": "BLUE"
+  },
+  "export": {
+    "library_name": "ui",
+    "directory": "export",
+    "prefix": "ui",
+    "multilang": false,
+    "swap_bytes": false
+  },
+  "assets": {
+    "images": [],
+    "fonts": []
+  },
+  "color_themes": {
+    "variables": [],
+    "themes": [],
+    "active": 0
+  },
+  "screens": [
+    {
+      "id": 1,
+      "kind": "screen",
+      "name": "Main",
+      "geometry": {
+        "x": "0",
+        "y": "0",
+        "width": "100%",
+        "height": "100%",
+        "align": "TOP_LEFT"
+      },
+      "children": [
+        {
+          "id": 3,
+          "kind": "arc",
+          "name": "SpeedArc",
+          "geometry": {
+            "x": "0",
+            "y": "0",
+            "width": "410",
+            "height": "410",
+            "align": "CENTER"
+          },
+          "props": {
+            "range": {
+              "pair": [
+                0,
+                240
+              ]
+            },
+            "value": {
+              "int": 132
+            }
+          },
+          "styles": [
+            {
+              "slot": "main",
+              "state": "DEFAULT",
+              "props": {
+                "arc_width": {
+                  "int": 22
+                }
+              }
+            },
+            {
+              "slot": "indicator",
+              "state": "DEFAULT",
+              "props": {
+                "arc_width": {
+                  "int": 22
+                }
+              }
+            },
+            {
+              "slot": "knob",
+              "state": "DEFAULT",
+              "props": {
+                "bg_opa": {
+                  "int": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "kind": "label",
+          "name": "Speed",
+          "geometry": {
+            "x": "0",
+            "y": "-18",
+            "width": "content",
+            "height": "content",
+            "align": "CENTER"
+          },
+          "props": {
+            "text": {
+              "text": "132"
+            }
+          },
+          "styles": [
+            {
+              "slot": "main",
+              "state": "DEFAULT",
+              "props": {
+                "text_font": {
+                  "font": "montserrat_48"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "kind": "label",
+          "name": "Unit",
+          "geometry": {
+            "x": "0",
+            "y": "30",
+            "width": "content",
+            "height": "content",
+            "align": "CENTER"
+          },
+          "props": {
+            "text": {
+              "text": "km/h"
+            }
+          },
+          "styles": [
+            {
+              "slot": "main",
+              "state": "DEFAULT",
+              "props": {
+                "text_color": {
+                  "color": "#9E9E9E"
+                },
+                "text_font": {
+                  "font": "montserrat_20"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "kind": "led",
+          "name": "Warning",
+          "geometry": {
+            "x": "0",
+            "y": "82",
+            "width": "16",
+            "height": "16",
+            "align": "TOP_MID"
+          },
+          "props": {
+            "color": {
+              "color": "#F44336"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "kind": "label",
+          "name": "FuelLabel",
+          "geometry": {
+            "x": "0",
+            "y": "-132",
+            "width": "content",
+            "height": "content",
+            "align": "BOTTOM_MID"
+          },
+          "props": {
+            "text": {
+              "text": "Fuel"
+            }
+          },
+          "styles": [
+            {
+              "slot": "main",
+              "state": "DEFAULT",
+              "props": {
+                "text_color": {
+                  "color": "#9E9E9E"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "kind": "bar",
+          "name": "Fuel",
+          "geometry": {
+            "x": "0",
+            "y": "-110",
+            "width": "170",
+            "height": "12",
+            "align": "BOTTOM_MID"
+          },
+          "props": {
+            "value": {
+              "int": 65
+            }
+          }
+        },
+        {
+          "id": 9,
+          "kind": "button",
+          "name": "SettingsButton",
+          "geometry": {
+            "x": "0",
+            "y": "-48",
+            "width": "120",
+            "height": "40",
+            "align": "BOTTOM_MID"
+          },
+          "events": [
+            {
+              "trigger": "CLICKED",
+              "action": {
+                "action": "change_screen",
+                "screen": 2,
+                "anim": "MOVE_LEFT",
+                "time_ms": 300,
+                "delay_ms": 0
+              }
+            }
+          ],
+          "children": [
+            {
+              "id": 10,
+              "kind": "label",
+              "name": "SettingsLabel",
+              "geometry": {
+                "x": "0",
+                "y": "0",
+                "width": "content",
+                "height": "content",
+                "align": "CENTER"
+              },
+              "props": {
+                "text": {
+                  "text": "Settings"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "kind": "screen",
+      "name": "Settings",
+      "geometry": {
+        "x": "0",
+        "y": "0",
+        "width": "100%",
+        "height": "100%",
+        "align": "TOP_LEFT"
+      },
+      "children": [
+        {
+          "id": 11,
+          "kind": "label",
+          "name": "Title",
+          "geometry": {
+            "x": "0",
+            "y": "70",
+            "width": "content",
+            "height": "content",
+            "align": "TOP_MID"
+          },
+          "props": {
+            "text": {
+              "text": "Settings"
+            }
+          },
+          "styles": [
+            {
+              "slot": "main",
+              "state": "DEFAULT",
+              "props": {
+                "text_font": {
+                  "font": "montserrat_28"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "kind": "label",
+          "name": "BluetoothLabel",
+          "geometry": {
+            "x": "-60",
+            "y": "-70",
+            "width": "content",
+            "height": "content",
+            "align": "CENTER"
+          },
+          "props": {
+            "text": {
+              "text": "Bluetooth"
+            }
+          }
+        },
+        {
+          "id": 13,
+          "kind": "switch",
+          "name": "Bluetooth",
+          "geometry": {
+            "x": "90",
+            "y": "-70",
+            "width": "50",
+            "height": "25",
+            "align": "CENTER"
+          },
+          "states": [
+            "CHECKED"
+          ]
+        },
+        {
+          "id": 14,
+          "kind": "label",
+          "name": "NightmodeLabel",
+          "geometry": {
+            "x": "-60",
+            "y": "-20",
+            "width": "content",
+            "height": "content",
+            "align": "CENTER"
+          },
+          "props": {
+            "text": {
+              "text": "Night mode"
+            }
+          }
+        },
+        {
+          "id": 15,
+          "kind": "switch",
+          "name": "Nightmode",
+          "geometry": {
+            "x": "90",
+            "y": "-20",
+            "width": "50",
+            "height": "25",
+            "align": "CENTER"
+          }
+        },
+        {
+          "id": 16,
+          "kind": "slider",
+          "name": "Brightness",
+          "geometry": {
+            "x": "0",
+            "y": "40",
+            "width": "220",
+            "height": "10",
+            "align": "CENTER"
+          },
+          "props": {
+            "value": {
+              "int": 70
+            }
+          }
+        },
+        {
+          "id": 17,
+          "kind": "dropdown",
+          "name": "Units",
+          "geometry": {
+            "x": "0",
+            "y": "95",
+            "width": "160",
+            "height": "content",
+            "align": "CENTER"
+          },
+          "props": {
+            "options": {
+              "text": "km/h\nmph"
+            }
+          }
+        },
+        {
+          "id": 18,
+          "kind": "button",
+          "name": "BackButton",
+          "geometry": {
+            "x": "0",
+            "y": "-48",
+            "width": "120",
+            "height": "40",
+            "align": "BOTTOM_MID"
+          },
+          "events": [
+            {
+              "trigger": "CLICKED",
+              "action": {
+                "action": "change_screen",
+                "screen": 1,
+                "anim": "MOVE_RIGHT",
+                "time_ms": 300,
+                "delay_ms": 0
+              }
+            }
+          ],
+          "children": [
+            {
+              "id": 19,
+              "kind": "label",
+              "name": "BackLabel",
+              "geometry": {
+                "x": "0",
+                "y": "0",
+                "width": "content",
+                "height": "content",
+                "align": "CENTER"
+              },
+              "props": {
+                "text": {
+                  "text": "Back"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "components": [],
+  "next_id": 20
+}

@@ -78,12 +78,13 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
         ui.horizontal_top(|ui| {
             // Ways to begin.
             ui.vertical(|ui| {
-                ui.set_width(220.0);
+                ui.set_width(250.0);
                 ui.label(RichText::new(tr("Start")).strong());
                 ui.add_space(6.0);
                 let mut action = |ui: &mut egui::Ui, icon: &str, text: &str, command: Command| {
                     let button = egui::Button::new(RichText::new(format!("{icon}  {text}")).size(15.0))
-                        .min_size(vec2(220.0, 40.0))
+                        .wrap_mode(egui::TextWrapMode::Truncate)
+                        .min_size(vec2(250.0, 40.0))
                         .corner_radius(8);
                     if ui.add(button).clicked() {
                         chosen = Some(command);
