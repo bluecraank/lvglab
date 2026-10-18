@@ -1,6 +1,6 @@
 ﻿; Windows installer for LVGLab (Inno Setup 6).
 ;
-;   iscc /DAppVersion=0.4.0 /DSourceDir=..\target\release /DOutputDir=..\dist installer\lvglab.iss
+;   iscc /DAppVersion=0.4.1 /DSourceDir=..\target\release /DOutputDir=..\dist installer\lvglab.iss
 ;
 ; SourceDir must contain lvglab.exe. The installer installs for all users
 ; (Program Files, needs administrator rights) or, if chosen, for the current
