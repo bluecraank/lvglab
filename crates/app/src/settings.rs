@@ -85,6 +85,8 @@ pub struct AppSettings {
     pub autosave_minutes: u32,
     /// Autosave writes the project file itself; otherwise a backup copy.
     pub autosave_project: bool,
+    /// Keep the timeline in `<name>.timeline` next to the project.
+    pub save_timeline: bool,
     // Export
     pub open_export_folder: bool,
     // AI assistant
@@ -114,6 +116,7 @@ impl Default for AppSettings {
             history_limit: 300,
             autosave_minutes: 2,
             autosave_project: true,
+            save_timeline: true,
             open_export_folder: false,
             ai_api_key: String::new(),
             ai_model: lvglab_ai::MODELS[0].0.to_owned(),

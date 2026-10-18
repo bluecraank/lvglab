@@ -336,6 +336,13 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                         ui.selectable_value(&mut s.autosave_project, false, tr("Backup copy (.backup.lvglab)"));
                     });
                     ui.end_row();
+                    label(
+                        ui,
+                        tr("Keep the timeline"),
+                        tr("Saves the timeline as <name>.timeline next to the project and restores it when the project is opened."),
+                    );
+                    ui.checkbox(&mut s.save_timeline, "");
+                    ui.end_row();
                 });
             });
             section(ui, "prefs_ai", tr("AI assistant"), true, |ui| {

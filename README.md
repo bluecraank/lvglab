@@ -360,6 +360,10 @@ The LVGL tick must run, e.g. with `LV_TICK_CUSTOM 1` and `LV_TICK_CUSTOM_SYS_TIM
 Studio projects (`.lvglab`) are pretty-printed JSON and work well with git. Values that equal
 the LVGL defaults are left out, so diffs stay small.
 
+The timeline is saved as `<name>.timeline` next to the project and restored when you open it, so the
+project file only holds the current state (add `*.timeline` to `.gitignore` if you do not want it in git).
+Each step stores only the screens that changed.
+
 Saving makes the project folder self-contained: every image and TTF/OTF file the project uses is
 copied into an `assets/` folder next to the `.lvglab` file, and the paths are stored relative to it.
 Files with the same name get a suffix (`logo_2.png`). **Save as** into another folder copies the assets
