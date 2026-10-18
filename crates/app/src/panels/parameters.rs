@@ -39,8 +39,14 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     section(ui, "scroll", tr("Scrolling"), false, |ui| scroll(ui, &mut widget));
 
     if widget != original {
+        let renamed = (widget.name != original.name).then(|| widget.name.clone());
         if let Some(target) = studio.doc.project.widget_mut(original.id) {
             *target = widget;
+        }
+        if let Some(new) = renamed {
+            if studio.doc.project.is_component(original.id) {
+                studio.doc.project.rename_component_instances(&original.name, &new);
+            }
         }
     }
 }
@@ -123,6 +129,21 @@ fn prop_editor(ui: &mut egui::Ui, project: &Project, widget: &Widget, def: &Prop
     match (def.kind, value) {
         (PropKind::Bool, PropValue::Bool(v)) => ui.checkbox(v, "").changed(),
         (PropKind::Int { min, max }, PropValue::Int(v)) => ui.add(egui::DragValue::new(v).range(min..=max)).changed(),
+        (PropKind::Text, PropValue::Text(v)) if def.key == "component" => {
+            let mut changed = false;
+            egui::ComboBox::from_id_salt(id).selected_text(v.as_str()).show_ui(ui, |ui| {
+                for component in &project.components {
+                    if ui.selectable_label(*v == component.name, &component.name).clicked() {
+                        v.clone_from(&component.name);
+                        changed = true;
+                    }
+                }
+                if project.components.is_empty() {
+                    crate::widgets::muted(ui, tr("Create a component in the Screens panel first."));
+                }
+            });
+            changed
+        }
         (PropKind::Text, PropValue::Text(v)) => {
             ui.add(egui::TextEdit::singleline(v).desired_width(f32::INFINITY)).changed()
         }

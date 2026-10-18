@@ -280,6 +280,20 @@ const SCREEN: WidgetDef = WidgetDef {
     ..BASE
 };
 
+const COMPONENT: WidgetDef = WidgetDef {
+    kind: WidgetKind::Component,
+    name: "Component",
+    category: Category::Containers,
+    icon: "📦",
+    description: "An instance of one of the project's components.",
+    create: "{component_create}({parent})",
+    width: Coord::content(),
+    height: Coord::content(),
+    props: &[PropDef::new("component", "Component", K::Text, D::Text(""))
+        .help("Name of the component; edit it under Screens → Components.")],
+    ..BASE
+};
+
 const PANEL: WidgetDef = WidgetDef {
     kind: WidgetKind::Panel,
     name: "Panel",
@@ -1213,6 +1227,7 @@ pub const ALL: &[&WidgetDef] = &[
     &LIST,
     &MENU,
     &MSGBOX,
+    &COMPONENT,
 ];
 
 pub fn def(kind: WidgetKind) -> &'static WidgetDef {
@@ -1254,6 +1269,7 @@ pub fn def(kind: WidgetKind) -> &'static WidgetDef {
         WidgetKind::List => &LIST,
         WidgetKind::Menu => &MENU,
         WidgetKind::Msgbox => &MSGBOX,
+        WidgetKind::Component => &COMPONENT,
     }
 }
 
@@ -1307,7 +1323,7 @@ mod tests {
             for template in [def.create, def.post_create, def.post_props] {
                 for key in placeholders(template) {
                     let key = key.split('.').next().unwrap();
-                    let builtin = matches!(key, "parent" | "obj" | "w" | "h");
+                    let builtin = matches!(key, "parent" | "obj" | "w" | "h" | "component_create");
                     assert!(builtin || def.prop(key).is_some(), "{}: unknown placeholder {key}", def.name);
                 }
             }

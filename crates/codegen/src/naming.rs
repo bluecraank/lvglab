@@ -43,6 +43,22 @@ impl Naming {
             }
             vars.insert(widget.id, name);
         }
+        // Objects of components are locals of their create function (`cui_Icon`).
+        for component in &project.components {
+            let mut local = HashSet::new();
+            for root in &component.children {
+                root.walk(&mut |w| {
+                    let base = format!("c{prefix}_{}", c_ident(&w.name));
+                    let mut name = base.clone();
+                    let mut n = 2;
+                    while !local.insert(name.clone()) {
+                        name = format!("{base}_{n}");
+                        n += 1;
+                    }
+                    vars.insert(w.id, name);
+                });
+            }
+        }
         let images = project
             .assets
             .images
@@ -114,6 +130,41 @@ impl Naming {
         match builtin_font_size(name) {
             Some(size) => format!("&lv_font_montserrat_{size}"),
             None => format!("&{}", self.font(name)),
+        }
+    }
+
+    /// `ui_<Name>_create` of a component.
+    pub fn component_create(&self, component: &str) -> String {
+        format!("{}_{}_create", self.prefix, c_ident(component))
+    }
+
+    /// `ui_comp_<name>` file stem of a component.
+    pub fn component_file(&self, component: &str) -> String {
+        format!("{}_comp_{}", self.prefix, c_ident(component).to_ascii_lowercase())
+    }
+
+    /// `UI_COMP_<COMPONENT>_<CHILD>` index of an object in a component.
+    pub fn component_child(&self, component: &str, child: &str) -> String {
+        format!(
+            "{}_COMP_{}_{}",
+            self.upper(),
+            c_ident(component).to_ascii_uppercase(),
+            c_ident(child).to_ascii_uppercase()
+        )
+    }
+
+    /// `_UI_COMP_<COMPONENT>_NUM`: number of objects in a component.
+    pub fn component_count(&self, component: &str) -> String {
+        format!("_{}_COMP_{}_NUM", self.upper(), c_ident(component).to_ascii_uppercase())
+    }
+
+    /// Event that asks a component for one of its objects. SquareLine's
+    /// name is kept for the `ui` prefix.
+    pub fn component_event(&self) -> String {
+        if self.prefix == "ui" {
+            "LV_EVENT_GET_COMP_CHILD".to_owned()
+        } else {
+            format!("{}_EVENT_GET_COMP_CHILD", self.upper())
         }
     }
 

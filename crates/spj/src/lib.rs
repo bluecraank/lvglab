@@ -104,6 +104,7 @@ impl<'a> Importer<'a> {
         self.apply_info(&file, fallback_name);
         self.import_themes();
         self.import_assets();
+        self.import_components();
         let screens: Vec<&SpjNode> = if file.root.kind.eq_ignore_ascii_case("SCREEN") {
             vec![&file.root]
         } else {
@@ -186,6 +187,36 @@ impl<'a> Importer<'a> {
             if !board.contains("TFT_eSPI") {
                 self.warn(format!("board `{board}` was replaced by ESP32 + TFT_eSPI"));
             }
+        }
+    }
+
+    /// Reads the component definitions from `components/*.ecomp`.
+    fn import_components(&mut self) {
+        let Some(dir) = self.base_dir.map(|d| d.join("components")) else { return };
+        let Ok(entries) = std::fs::read_dir(&dir) else { return };
+        let mut paths: Vec<_> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("ecomp")))
+            .collect();
+        paths.sort();
+        for path in paths {
+            let node: Result<SpjNode, String> = std::fs::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| serde_json::from_str(&text).map_err(|e| e.to_string()));
+            let node = match node {
+                Ok(node) => node,
+                Err(err) => {
+                    self.warn(format!("component {} could not be read: {err}", path.display()));
+                    continue;
+                }
+            };
+            let kind = catalog::by_squareline_name(&node.kind).unwrap_or(WidgetKind::Container);
+            let root = self.convert(&node, kind);
+            let id = self.project.alloc_id();
+            let mut definition = Widget::new(WidgetKind::Screen, id, root.name.clone());
+            definition.children.push(root);
+            self.project.components.push(definition);
         }
     }
 
@@ -622,10 +653,23 @@ fn flex_layout(prop: &SpjProp) -> Option<FlexLayout> {
     let l = &prop.layout;
     Some(FlexLayout {
         flow: FlexFlow::compose(l.flow.unwrap_or(0) == 0, l.wrap.unwrap_or(false), l.reversed.unwrap_or(false)),
-        main_place: FlexAlign::from_index(l.main_alignment.unwrap_or(0)),
-        cross_place: FlexAlign::from_index(l.cross_alignment.unwrap_or(0)),
-        track_place: FlexAlign::from_index(l.track_alignment.unwrap_or(0)),
+        main_place: flex_align(l.main_alignment),
+        cross_place: flex_align(l.cross_alignment),
+        track_place: flex_align(l.track_alignment),
     })
+}
+
+/// SquareLine numbers the flex alignments in the order of its editor,
+/// which differs from `lv_flex_align_t` (there END is 1 and CENTER 2).
+fn flex_align(index: Option<i64>) -> FlexAlign {
+    match index.unwrap_or(0) {
+        1 => FlexAlign::Center,
+        2 => FlexAlign::End,
+        3 => FlexAlign::SpaceBetween,
+        4 => FlexAlign::SpaceAround,
+        5 => FlexAlign::SpaceEvenly,
+        _ => FlexAlign::Start,
+    }
 }
 
 fn collect_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
@@ -819,7 +863,7 @@ mod tests {
         assert!(button.states.contains(&ObjState::Checked));
         let flex = button.layout.unwrap();
         assert_eq!(flex.flow, FlexFlow::ColumnWrap);
-        assert_eq!(flex.main_place, FlexAlign::Center);
+        assert_eq!(flex.main_place, FlexAlign::End);
     }
 
     #[test]

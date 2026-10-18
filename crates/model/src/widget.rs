@@ -62,6 +62,8 @@ pub enum WidgetKind {
     List,
     Menu,
     Msgbox,
+    /// An instance of a project component.
+    Component,
 }
 
 impl WidgetKind {

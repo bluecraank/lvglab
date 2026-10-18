@@ -26,6 +26,7 @@ pub enum Command {
     Redo,
     JumpTo(usize),
     AddScreen,
+    AddComponent,
     /// Adds a widget to `parent` (or next to/into the selection).
     AddWidget {
         kind: WidgetKind,
@@ -112,6 +113,10 @@ impl Studio {
             }
             Command::AddScreen => {
                 let id = self.doc.project.add_screen();
+                self.select_screen(id);
+            }
+            Command::AddComponent => {
+                let id = self.doc.project.add_component();
                 self.select_screen(id);
             }
             Command::AddWidget { kind, parent } => self.add_widget(kind, parent),

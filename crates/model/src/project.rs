@@ -197,6 +197,10 @@ pub struct Project {
     /// Color themes with variables that styles can bind to.
     pub color_themes: ColorThemes,
     pub screens: Vec<Widget>,
+    /// Reusable components. Each one is stored like a screen whose only
+    /// child is the component's root object; the screen itself is not
+    /// exported. Its name is the component name.
+    pub components: Vec<Widget>,
     /// Next free widget id.
     pub next_id: u64,
 }
@@ -213,6 +217,7 @@ impl Default for Project {
             color_themes: ColorThemes::default(),
             assets: Assets::default(),
             screens: Vec::new(),
+            components: Vec::new(),
             next_id: 1,
         }
     }
@@ -253,7 +258,7 @@ impl Project {
         let mut seen = HashSet::new();
         let mut max = 0;
         let mut duplicates = 0;
-        for screen in &self.screens {
+        for screen in self.screens.iter().chain(&self.components) {
             screen.walk(&mut |w| {
                 max = max.max(w.id.0);
                 if !seen.insert(w.id) {
@@ -265,7 +270,7 @@ impl Project {
         if duplicates > 0 {
             let mut seen = HashSet::new();
             let mut next = self.next_id;
-            for screen in &mut self.screens {
+            for screen in self.screens.iter_mut().chain(&mut self.components) {
                 screen.walk_mut(&mut |w| {
                     if !seen.insert(w.id) {
                         w.id = WidgetId(next);
@@ -279,22 +284,122 @@ impl Project {
 
     // -- lookup -----------------------------------------------------------
 
+    /// Screens and component definitions.
+    fn roots(&self) -> impl Iterator<Item = &Widget> {
+        self.screens.iter().chain(&self.components)
+    }
+
+    fn roots_mut(&mut self) -> impl Iterator<Item = &mut Widget> {
+        self.screens.iter_mut().chain(&mut self.components)
+    }
+
+    /// A widget of a screen or of a component.
     pub fn widget(&self, id: WidgetId) -> Option<&Widget> {
-        self.screens.iter().find_map(|s| s.find(id))
+        self.roots().find_map(|s| s.find(id))
     }
 
     pub fn widget_mut(&mut self, id: WidgetId) -> Option<&mut Widget> {
-        self.screens.iter_mut().find_map(|s| s.find_mut(id))
+        self.roots_mut().find_map(|s| s.find_mut(id))
     }
 
-    /// The screen containing `id`.
+    /// The screen (or component) containing `id`.
     pub fn screen_of(&self, id: WidgetId) -> Option<&Widget> {
-        self.screens.iter().find(|s| s.find(id).is_some())
+        self.roots().find(|s| s.find(id).is_some())
     }
 
     /// Ancestors of `id` from its screen down to the widget itself.
     pub fn path_to(&self, id: WidgetId) -> Option<Vec<&Widget>> {
-        self.screens.iter().find_map(|s| s.path_to(id))
+        self.roots().find_map(|s| s.path_to(id))
+    }
+
+    pub fn is_component(&self, id: WidgetId) -> bool {
+        self.components.iter().any(|c| c.id == id)
+    }
+
+    /// The component definition named `name`.
+    pub fn component(&self, name: &str) -> Option<&Widget> {
+        self.components.iter().find(|c| c.name == name)
+    }
+
+    /// Points the instances of component `old` to `new` after a rename.
+    pub fn rename_component_instances(&mut self, old: &str, new: &str) {
+        for screen in self.roots_mut() {
+            screen.walk_mut(&mut |w| {
+                if w.kind == WidgetKind::Component && w.prop_text("component") == old {
+                    w.set_prop("component", PropValue::Text(new.to_owned()));
+                }
+            });
+        }
+    }
+
+    /// Adds an empty component (a container) and returns the id of its
+    /// definition.
+    pub fn add_component(&mut self) -> WidgetId {
+        let id = self.alloc_id();
+        let name =
+            (1..).map(|n| format!("Component{n}")).find(|n| self.component(n).is_none()).expect("infinite iterator");
+        let mut definition = Widget::new(WidgetKind::Screen, id, name.clone());
+        let mut root = self.new_widget(WidgetKind::Container);
+        root.name = name;
+        root.geometry.width = crate::Coord::px(200);
+        root.geometry.height = crate::Coord::px(80);
+        definition.children.push(root);
+        self.components.push(definition);
+        id
+    }
+
+    /// A copy of `screen` with every component instance replaced by the
+    /// component's root object, for the preview. The instance keeps its id,
+    /// name, position, alignment and events; its local styles override the
+    /// root's. Objects inside the component get ids at or above
+    /// [`EXPANDED_ID_BASE`], which do not exist in the project.
+    pub fn expand_instances(&self, screen: &Widget) -> Widget {
+        let mut copy = screen.clone();
+        let mut next = EXPANDED_ID_BASE;
+        self.expand_into(&mut copy, &mut next, 0);
+        copy
+    }
+
+    fn expand_into(&self, widget: &mut Widget, next: &mut u64, depth: usize) {
+        if widget.kind == WidgetKind::Component && depth < 8 {
+            let name = widget.prop_text("component");
+            if let Some(root) = self.component(&name).and_then(|c| c.children.first()) {
+                let mut expanded = root.clone();
+                expanded.walk_mut(&mut |w| {
+                    w.id = WidgetId(*next);
+                    *next += 1;
+                });
+                expanded.id = widget.id;
+                expanded.name.clone_from(&widget.name);
+                expanded.geometry.x = widget.geometry.x;
+                expanded.geometry.y = widget.geometry.y;
+                expanded.geometry.align = widget.geometry.align;
+                if widget.geometry.width.unit != crate::coord::Unit::Content {
+                    expanded.geometry.width = widget.geometry.width;
+                }
+                if widget.geometry.height.unit != crate::coord::Unit::Content {
+                    expanded.geometry.height = widget.geometry.height;
+                }
+                for (flag, on) in &widget.flags {
+                    expanded.set_flag(*flag, *on);
+                }
+                expanded.states.extend(widget.states.iter().copied());
+                for block in widget.styles.blocks() {
+                    for (prop, value) in &block.props {
+                        expanded.styles.set(&block.slot, block.state, *prop, value.clone());
+                    }
+                }
+                expanded.events.clone_from(&widget.events);
+                *widget = expanded;
+                for child in &mut widget.children {
+                    self.expand_into(child, next, depth + 1);
+                }
+                return;
+            }
+        }
+        for child in &mut widget.children {
+            self.expand_into(child, next, depth);
+        }
     }
 
     pub fn location(&self, id: WidgetId) -> Option<Location> {
@@ -341,6 +446,11 @@ impl Project {
         let id = self.alloc_id();
         let base = kind.def().name.replace(' ', "");
         let mut widget = Widget::new(kind, id, self.unique_name(&base));
+        if kind == WidgetKind::Component {
+            if let Some(component) = self.components.first() {
+                widget.set_prop("component", PropValue::Text(component.name.clone()));
+            }
+        }
         if kind == WidgetKind::Button {
             let mut label = Widget::new(WidgetKind::Label, self.alloc_id(), format!("{}Label", widget.name));
             label.set_prop("text", PropValue::Text(widget.name.clone()));
@@ -363,8 +473,11 @@ impl Project {
         Ok(())
     }
 
-    /// Removes a widget (or a screen) and clears references to it.
+    /// Removes a widget (or a screen or component) and clears references to it.
     pub fn remove(&mut self, id: WidgetId) -> Option<Widget> {
+        if let Some(index) = self.components.iter().position(|c| c.id == id) {
+            return Some(self.components.remove(index));
+        }
         let location = self.location(id)?;
         let removed = match location.parent {
             None => self.screens.remove(location.index),
@@ -379,7 +492,7 @@ impl Project {
     }
 
     fn clear_references(&mut self, gone: &HashSet<WidgetId>) {
-        for screen in &mut self.screens {
+        for screen in self.roots_mut() {
             screen.walk_mut(&mut |w| {
                 for value in w.props.values_mut() {
                     if let PropValue::WidgetRef(Some(target)) = value {
@@ -414,8 +527,15 @@ impl Project {
         true
     }
 
-    /// Moves a widget (or screen) one step within its siblings.
+    /// Moves a widget (or screen or component) one step within its siblings.
     pub fn shift(&mut self, id: WidgetId, delta: isize) -> bool {
+        if let Some(index) = self.components.iter().position(|c| c.id == id) {
+            let Some(new_index) = index.checked_add_signed(delta).filter(|i| *i < self.components.len()) else {
+                return false;
+            };
+            self.components.swap(index, new_index);
+            return true;
+        }
         let Some(location) = self.location(id) else { return false };
         let siblings = match location.parent {
             None => &mut self.screens,
@@ -445,6 +565,17 @@ impl Project {
 
     /// Duplicates a widget next to the original; returns the new id.
     pub fn duplicate(&mut self, id: WidgetId) -> Option<WidgetId> {
+        if let Some(index) = self.components.iter().position(|c| c.id == id) {
+            let original = self.components[index].clone();
+            let mut copy = self.clone_with_new_ids(&original);
+            copy.name = (2..)
+                .map(|n| format!("{}{n}", original.name.trim_end_matches(|c: char| c.is_ascii_digit())))
+                .find(|n| self.component(n).is_none())
+                .expect("infinite iterator");
+            let new_id = copy.id;
+            self.components.insert(index + 1, copy);
+            return Some(new_id);
+        }
         let location = self.location(id)?;
         let original = self.widget(id)?.clone();
         let copy = self.clone_with_new_ids(&original);
@@ -470,7 +601,7 @@ impl Project {
                 }
             }
         }
-        for screen in &mut self.screens {
+        for screen in self.roots_mut() {
             screen.walk_mut(&mut |w| {
                 for block in w.styles.blocks_mut() {
                     for value in block.props.values_mut() {
@@ -516,7 +647,7 @@ impl Project {
             return false;
         }
         themes.variables[index] = new.to_owned();
-        for screen in &mut self.screens {
+        for screen in self.roots_mut() {
             screen.walk_mut(&mut |w| {
                 for block in w.styles.blocks_mut() {
                     for value in block.props.values_mut() {
@@ -587,6 +718,9 @@ impl Project {
     }
 }
 
+/// First id of objects created by [`Project::expand_instances`].
+pub const EXPANDED_ID_BASE: u64 = 1 << 48;
+
 /// Folder next to the project file that holds its images and fonts.
 pub const ASSETS_DIR: &str = "assets";
 
@@ -619,6 +753,35 @@ fn same_contents(a: &Path, b: &Path) -> bool {
 mod tests {
     use super::*;
     use crate::event::{Action, EventHandler, EventTrigger, ScreenAnim};
+
+    #[test]
+    fn instances_expand_to_their_component() {
+        let mut project = Project::new("P");
+        let definition = project.add_component();
+        let root = project.widget(definition).unwrap().children[0].id;
+        let label = project.new_widget(WidgetKind::Label);
+        project.insert(root, 0, label).unwrap();
+        let screen = project.screens[0].id;
+        let mut instance = project.new_widget(WidgetKind::Component);
+        assert_eq!(instance.prop_text("component"), "Component1");
+        instance.geometry.x = crate::Coord::px(30);
+        let instance_id = instance.id;
+        project.insert(screen, 0, instance).unwrap();
+
+        let expanded = project.expand_instances(&project.screens[0]);
+        let shown = &expanded.children[0];
+        assert_eq!(
+            (shown.id, shown.kind, shown.geometry.x),
+            (instance_id, WidgetKind::Container, crate::Coord::px(30))
+        );
+        assert!(shown.children[0].id.0 >= EXPANDED_ID_BASE);
+
+        project.widget_mut(definition).unwrap().name = "Gauge".into();
+        project.rename_component_instances("Component1", "Gauge");
+        assert_eq!(project.widget(instance_id).unwrap().prop_text("component"), "Gauge");
+        assert!(project.remove(definition).is_some());
+        assert!(project.components.is_empty());
+    }
 
     #[test]
     fn collects_assets_into_the_project_folder() {
