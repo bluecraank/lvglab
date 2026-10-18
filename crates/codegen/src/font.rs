@@ -56,7 +56,7 @@ pub struct LineMetrics {
     pub base_line: i32,
 }
 
-/// Like `lv_font_conv` (and so SquareLine Studio), the line spans the
+/// Like `lv_font_conv`, the line spans the
 /// bitmaps of the glyphs the font contains: from the highest top to the
 /// lowest bottom, with the baseline above that bottom. Fonts without any
 /// visible glyph fall back to the font's ascent and descent.

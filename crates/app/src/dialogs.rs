@@ -377,7 +377,7 @@ fn about(ctx: &egui::Context, studio: &mut Studio) {
     let choice =
         modal::show(ctx, "about", Tone::Info, &title, tr("UI designer for LVGL 8 and 9 on ESP32."), &actions, |ui| {
             ui.add_space(10.0);
-            muted(ui, tr("Imports SquareLine Studio projects. Not affiliated with LVGL or SquareLine."));
+            muted(ui, tr("Imports SquareLine Studio projects. Not affiliated with LVGL."));
             ui.hyperlink(env!("CARGO_PKG_REPOSITORY"));
         });
     if choice.is_some() || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {

@@ -1,8 +1,6 @@
 //! C identifiers and file names of the generated code.
 //!
-//! Everything derives from the project's prefix (`ui` by default) the same
-//! way SquareLine Studio names its exports, so a LVGLab export can replace a
-//! SquareLine export without changing application code:
+//! Everything derives from the project's prefix (`ui` by default):
 //! `ui_Main01`, `ui_Main01_screen_init`, `ui_img_logo_png`, `ui_font_Big40`,
 //! `_ui_flag_modify`, `UI_THEME_DEFAULT`, `_ui_theme_color_Main`.
 
@@ -64,7 +62,7 @@ impl Naming {
             .images
             .iter()
             .map(|asset| {
-                // SquareLine names images after their file: `logo.png` → `ui_img_logo_png`.
+                // Images are named after their file: `logo.png` → `ui_img_logo_png`.
                 let file = Path::new(&asset.path).file_name().and_then(|f| f.to_str()).unwrap_or_default();
                 let stem = if file.contains('.') { file.to_owned() } else { format!("{}.png", asset.name) };
                 (asset.name.clone(), format!("{prefix}_img_{}", c_ident(&stem)))
@@ -158,8 +156,8 @@ impl Naming {
         format!("_{}_COMP_{}_NUM", self.upper(), c_ident(component).to_ascii_uppercase())
     }
 
-    /// Event that asks a component for one of its objects. SquareLine's
-    /// name is kept for the `ui` prefix.
+    /// Event that asks a component for one of its objects; without a prefix
+    /// of its own for the `ui` prefix.
     pub fn component_event(&self) -> String {
         if self.prefix == "ui" {
             "LV_EVENT_GET_COMP_CHILD".to_owned()
@@ -201,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn names_follow_squareline_conventions() {
+    fn names_follow_the_prefix_conventions() {
         let mut project = Project::new("P");
         project.assets.images.push(ImageAsset { name: "background".into(), path: "assets/background.png".into() });
         let naming = Naming::new(&project);
