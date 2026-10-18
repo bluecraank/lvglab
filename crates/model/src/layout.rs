@@ -279,6 +279,16 @@ impl<'a> Engine<'_, 'a> {
                 let gap = r.int(&path, "main", state, StyleProp::PadColumn);
                 (indicator + gap + tw, th.max(indicator))
             }
+            WidgetKind::Textarea => {
+                // The text and the placeholder are labels inside; the taller one counts, at least one line.
+                let one_line = widget.prop_bool("one_line");
+                let measure = |s: String| {
+                    if one_line { (text(&s.replace('\n', " ")).0, line_h) } else { text(&s) }
+                };
+                let (tw, th) = measure(widget.prop_text("text"));
+                let (pw, ph2) = measure(widget.prop_text("placeholder"));
+                (tw.max(pw), th.max(ph2).max(line_h))
+            }
             WidgetKind::Dropdown | WidgetKind::Spinbox => {
                 let (tw, _) = text(widget.prop_text("options").lines().next().unwrap_or("0"));
                 (tw + line_h, line_h)
@@ -515,7 +525,8 @@ mod tests {
 
     impl Measure for FixedMeasure {
         fn text_size(&self, text: &str, _: &str, _: i32, _: i32, _: Option<i32>) -> (i32, i32) {
-            (text.chars().count() as i32 * 10, 16)
+            let lines = text.lines().count().max(1) as i32;
+            (text.lines().map(|l| l.chars().count()).max().unwrap_or(0) as i32 * 10, lines * 16)
         }
         fn line_height(&self, _: &str) -> i32 {
             16
@@ -559,6 +570,44 @@ mod tests {
         label.set_prop("text", crate::prop::PropValue::Text("abcd".into()));
         screen.children.push(label);
         assert_eq!(layout_of(&screen)[1], Rect::new(0, 0, 40, 16));
+    }
+
+    #[test]
+    fn content_sized_text_area_has_the_height_of_its_text() {
+        let build = |text: &str, one_line: bool| {
+            let mut screen = Widget::new(WidgetKind::Screen, WidgetId(1), "S");
+            let mut area = Widget::new(WidgetKind::Textarea, WidgetId(2), "T");
+            area.geometry.align = Align::TopLeft;
+            area.geometry.width = Coord::px(200);
+            area.geometry.height = Coord::content();
+            area.set_prop("text", crate::prop::PropValue::Text(text.into()));
+            area.set_prop("one_line", crate::prop::PropValue::Bool(one_line));
+            screen.children.push(area);
+            layout_of(&screen)[1]
+        };
+        let pad = build("", true).h - 16;
+        assert!(pad > 0, "padding and border are added to one line of text");
+        assert_eq!(build("one", false).h, build("", false).h, "an empty text area is one line high");
+        assert_eq!(
+            build(
+                "a
+b
+c", false
+            )
+            .h,
+            pad + 3 * 16,
+            "every line adds its height"
+        );
+        assert_eq!(
+            build(
+                "a
+b
+c", true
+            )
+            .h,
+            pad + 16,
+            "one line mode ignores line breaks"
+        );
     }
 
     #[test]

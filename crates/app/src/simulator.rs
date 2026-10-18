@@ -32,6 +32,8 @@ const LOG_SIZE: usize = 6;
 struct Press {
     id: WidgetId,
     rect: lay::Rect,
+    /// The area inside border and padding (the keys of a keyboard).
+    content: lay::Rect,
     start: (i32, i32),
     time: f64,
     long_fired: bool,
@@ -235,7 +237,7 @@ impl Simulation {
 
     /// The object that receives a press at `(x, y)`: the topmost visible
     /// clickable widget, like LVGL's hit test.
-    fn target(&self, nodes: &[NodeInfo], x: i32, y: i32) -> Option<(WidgetId, lay::Rect)> {
+    fn target(&self, nodes: &[NodeInfo], x: i32, y: i32) -> Option<(WidgetId, lay::Rect, lay::Rect)> {
         let index = nodes.iter().rposition(|n| {
             !n.hidden
                 && n.rect.contains(x, y)
@@ -245,21 +247,21 @@ impl Simulation {
                     .widget(n.id)
                     .is_some_and(|w| w.flag(ObjFlag::Clickable) && !w.states.contains(&ObjState::Disabled))
         })?;
-        Some((nodes[index].id, nodes[index].rect))
+        Some((nodes[index].id, nodes[index].rect, nodes[index].content))
     }
 
     pub fn is_clickable_at(&self, nodes: &[NodeInfo], x: i32, y: i32) -> bool {
-        self.target(nodes, x, y).is_some_and(|(id, _)| id != self.screen)
+        self.target(nodes, x, y).is_some_and(|(id, ..)| id != self.screen)
     }
 
     pub fn press(&mut self, nodes: &[NodeInfo], x: i32, y: i32, now: f64) {
         if self.transition.is_some() {
             return;
         }
-        let Some((id, rect)) = self.target(nodes, x, y) else { return };
+        let Some((id, rect, content)) = self.target(nodes, x, y) else { return };
         let kind = self.project.widget(id).map(|w| w.kind);
         let adjusts_value = matches!(kind, Some(WidgetKind::Slider | WidgetKind::Arc));
-        self.press = Some(Press { id, rect, start: (x, y), time: now, long_fired: false, adjusts_value });
+        self.press = Some(Press { id, rect, content, start: (x, y), time: now, long_fired: false, adjusts_value });
         self.fire(id, EventTrigger::Pressed, now);
         if adjusts_value {
             self.adjust_value(id, rect, x, y, now);
@@ -312,6 +314,7 @@ impl Simulation {
             return;
         }
         self.click(id, now);
+        self.press_key(id, press.content, x, y, now);
         if !press.long_fired {
             self.fire(id, EventTrigger::ShortClicked, now);
         }
@@ -339,6 +342,59 @@ impl Simulation {
             widget.set_prop("selected", PropValue::Int(next));
             self.fire(id, EventTrigger::ValueChanged, now);
         }
+    }
+
+    /// A tap on a keyboard types into its target text area (or label).
+    fn press_key(&mut self, id: WidgetId, content: lay::Rect, x: i32, y: i32, now: f64) {
+        let Some(keyboard) = self.project.widget(id).filter(|w| w.kind == WidgetKind::Keyboard) else { return };
+        let rows = crate::canvas::keyboard_rows(&keyboard.prop_text("mode"));
+        let target = keyboard.prop("textarea").and_then(|v| v.as_widget_ref());
+        let Some((row, col)) = crate::canvas::key_at(content, &rows, 3, x, y) else { return };
+        let key = rows[row][col].clone();
+        // Keys that change the layout.
+        let next_mode = match key.as_str() {
+            "1#" => Some("LV_KEYBOARD_MODE_SPECIAL"),
+            "abc" => Some("LV_KEYBOARD_MODE_TEXT_LOWER"),
+            "ABC" => Some("LV_KEYBOARD_MODE_TEXT_UPPER"),
+            _ => None,
+        };
+        if let Some(next) = next_mode {
+            if let Some(w) = self.project.widget_mut(id) {
+                w.set_prop("mode", PropValue::Enum(next.to_owned()));
+            }
+            return;
+        }
+        let Some(target) = target else { return };
+        let Some(widget) = self.project.widget_mut(target) else { return };
+        if !matches!(widget.kind, WidgetKind::Textarea | WidgetKind::Label) {
+            return;
+        }
+        let mut text = widget.prop_text("text");
+        let one_line = widget.kind == WidgetKind::Textarea && widget.prop_bool("one_line");
+        let max = widget.prop_int("max_length");
+        match key.as_str() {
+            "Del" => {
+                text.pop();
+            }
+            "OK" => {
+                self.fire(id, EventTrigger::Ready, now);
+                return;
+            }
+            "Enter" if one_line => {
+                self.fire(id, EventTrigger::Ready, now);
+                return;
+            }
+            "Enter" => text.push('\n'),
+            "Kb" | "<" | ">" | "+/-" => return,
+            other => {
+                if max > 0 && text.chars().count() >= max as usize {
+                    return;
+                }
+                text.push_str(other);
+            }
+        }
+        widget.set_prop("text", PropValue::Text(text));
+        self.fire(target, EventTrigger::ValueChanged, now);
     }
 
     fn adjust_value(&mut self, id: WidgetId, rect: lay::Rect, x: i32, y: i32, now: f64) {
@@ -485,6 +541,7 @@ mod tests {
             rect,
             clip: lay::Rect::new(0, 0, 480, 320),
             children_area: rect,
+            content: rect,
             parent: None,
             hidden: false,
             movable: true,
@@ -558,6 +615,46 @@ mod tests {
         assert!(sim.project.widget(switch_id).unwrap().is_hidden());
         sim.tick(1.2);
         assert_eq!(sim.screen, second);
+    }
+
+    #[test]
+    fn keyboard_types_into_its_text_area() {
+        let mut project = Project::new("Sim");
+        let screen = project.screens[0].id;
+        let area = project.new_widget(WidgetKind::Textarea);
+        let area_id = area.id;
+        project.insert(screen, 0, area).unwrap();
+        let mut keyboard = project.new_widget(WidgetKind::Keyboard);
+        keyboard.set_prop("textarea", PropValue::WidgetRef(Some(area_id)));
+        let keyboard_id = keyboard.id;
+        project.insert(screen, 1, keyboard).unwrap();
+        project.widget_mut(area_id).unwrap().set_prop("max_length", PropValue::Int(3));
+        // A 400 × 160 keyboard at (0, 100); the number mode has 4 rows of 4 keys.
+        let rect = lay::Rect::new(0, 100, 400, 160);
+        let nodes = vec![
+            node(screen, WidgetKind::Screen, lay::Rect::new(0, 0, 480, 320)),
+            node(keyboard_id, WidgetKind::Keyboard, rect),
+        ];
+        let mut sim = Simulation::new(&project, screen);
+        let tap = |sim: &mut Simulation, x: i32, y: i32, t: f64| {
+            sim.press(&nodes, x, y, t);
+            sim.release(x, y, Pos2::ZERO, t + 0.05);
+        };
+        let text = |sim: &Simulation| sim.project.widget(area_id).unwrap().prop_text("text");
+        let mode = |sim: &Simulation| sim.project.widget(keyboard_id).unwrap().prop_text("mode");
+        // The default mode is lower case letters; the first row starts with "1#" and "q".
+        assert_eq!(mode(&sim), "LV_KEYBOARD_MODE_TEXT_LOWER");
+        tap(&mut sim, 60, 110, 0.0);
+        assert_eq!(text(&sim), "q", "the second key of the first row is q");
+        tap(&mut sim, 380, 110, 1.0);
+        assert_eq!(text(&sim), "", "Del removes the last character");
+        for i in 0..5 {
+            tap(&mut sim, 60, 110, 2.0 + f64::from(i));
+        }
+        assert_eq!(text(&sim), "qqq", "the maximum length of the text area is respected");
+        tap(&mut sim, 10, 110, 9.0);
+        assert_eq!(mode(&sim), "LV_KEYBOARD_MODE_SPECIAL", "1# switches to the special keys");
+        assert!(project.widget(area_id).unwrap().prop_text("text").is_empty(), "document untouched");
     }
 
     #[test]
