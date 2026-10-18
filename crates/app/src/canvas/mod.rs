@@ -1,6 +1,7 @@
 //! The WYSIWYG canvas: preview, selection, moving, resizing and dropping
 //! widgets from the palette.
 
+mod align;
 pub mod assets;
 mod render;
 
@@ -279,6 +280,14 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
             );
         }
     }
+    // Further selected widgets (Ctrl+click).
+    for id in &studio.extra_selection {
+        if let Some((_, node)) = studio.canvas.node(*id) {
+            let r = screen_rect(node.rect);
+            let corners = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+            painter.extend(egui::Shape::dashed_line(&corners, Stroke::new(1.5_f32, ACCENT), 5.0, 3.0));
+        }
+    }
     let selected = studio.selected.and_then(|id| studio.canvas.node(id).map(|(i, n)| (i, n.clone())));
     let handles = selected.as_ref().filter(|(_, n)| n.movable).map(|(_, n)| handle_rects(screen_rect(n.rect)));
     if let Some((_, node)) = &selected {
@@ -392,7 +401,14 @@ fn interact(
     if response.clicked() {
         if let Some(p) = response.interact_pointer_pos() {
             let (x, y) = to_display(p);
-            studio.select(studio.canvas.hit(x, y).map(|i| studio.canvas.nodes[i].id).or(Some(studio.screen)));
+            let hit = studio.canvas.hit(x, y).map(|i| studio.canvas.nodes[i].id);
+            if ui.input(|i| i.modifiers.command) {
+                if let Some(id) = hit.filter(|id| *id != studio.screen) {
+                    studio.toggle_in_selection(id);
+                }
+            } else {
+                studio.select(hit.or(Some(studio.screen)));
+            }
         }
     }
     if response.drag_started_by(PointerButton::Primary) {
@@ -432,7 +448,14 @@ fn interact(
             let snap = |v: i32| grid.map_or(v, |g| (v as f32 / g as f32).round() as i32 * g);
             let (id, rect, geometry, resized) = match drag {
                 Drag::Move { id, start, geometry } => {
-                    (id, lay::Rect { x: snap(start.x + dx), y: snap(start.y + dy), ..start }, geometry, false)
+                    let mut rect = lay::Rect { x: snap(start.x + dx), y: snap(start.y + dy), ..start };
+                    let moving = studio.canvas.node(id).map(|(i, _)| i);
+                    if let (true, Some(moving)) = (studio.settings.smart_guides, moving) {
+                        let (snapped, gx, gy) = align::snap(rect, moving, &studio.canvas.nodes, zoom);
+                        rect = snapped;
+                        draw_guides(ui, &studio.canvas.nodes, gx, gy, &to_display, zoom);
+                    }
+                    (id, rect, geometry, false)
                 }
                 Drag::Resize { id, handle, start, geometry } => {
                     (id, resize(start, handle, dx, dy, &snap), geometry, true)
@@ -808,5 +831,36 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
         let s = &mut studio.settings;
         ui.toggle_value(&mut s.show_grid, tr("Grid"));
         ui.toggle_value(&mut s.snap_to_grid, tr("Snap")).on_hover_text(tr("Snap to grid while moving"));
+        ui.toggle_value(&mut s.smart_guides, tr("Guides"))
+            .on_hover_text(tr("Snap to the edges and centers of neighbors while moving"));
+        if studio.simulation.is_none() && studio.selected.is_some_and(|id| id != studio.screen) {
+            ui.separator();
+            align::toolbar(ui, studio);
+        }
     });
+}
+
+/// Draws the snap lines of a move across the whole display.
+fn draw_guides(
+    ui: &egui::Ui,
+    nodes: &[NodeInfo],
+    gx: Option<i32>,
+    gy: Option<i32>,
+    to_display: &impl Fn(Pos2) -> (i32, i32),
+    zoom: f32,
+) {
+    let Some(screen) = nodes.first() else { return };
+    // Screen position of the display origin.
+    let (ox, oy) = to_display(Pos2::ZERO);
+    let origin = pos2(-ox as f32 * zoom, -oy as f32 * zoom);
+    let to_screen = |x: i32, y: i32| origin + vec2(x as f32, y as f32) * zoom;
+    let r = screen.rect;
+    let stroke = Stroke::new(1.0_f32, align::GUIDE);
+    let painter = ui.painter();
+    if let Some(x) = gx {
+        painter.line_segment([to_screen(x, r.y), to_screen(x, r.bottom())], stroke);
+    }
+    if let Some(y) = gy {
+        painter.line_segment([to_screen(r.x, y), to_screen(r.right(), y)], stroke);
+    }
 }
