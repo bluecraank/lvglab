@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{self, ColorImage, FontData, FontDefinitions, FontFamily, FontId, TextureHandle, TextureOptions};
+use eframe::egui::{
+    self, ColorImage, FontData, FontDefinitions, FontFamily, FontId, FontTweak, TextureHandle, TextureOptions,
+};
 use lvglab_model::Project;
 use lvglab_model::style::{builtin_font_line_height, builtin_font_size};
 
@@ -96,8 +98,8 @@ fn load_texture(ctx: &egui::Context, path: &Path) -> Option<Texture> {
 /// frame after `set_fonts`, so families are only used once active.
 #[derive(Default)]
 struct FontManager {
-    /// Loaded fonts: name → (file, size).
-    loaded: BTreeMap<String, (PathBuf, u16)>,
+    /// Loaded fonts: name → (file, size, ranges, symbols).
+    loaded: BTreeMap<String, FontKey>,
     /// LVGL line height of each loaded font at its asset size.
     line_heights: HashMap<String, f32>,
     active: HashSet<String>,
@@ -112,12 +114,14 @@ impl FontManager {
     }
 
     fn sync(&mut self, ctx: &egui::Context, project: &Project, dir: Option<&Path>) {
-        let wanted: BTreeMap<String, (PathBuf, u16)> = project
+        let wanted: BTreeMap<String, FontKey> = project
             .assets
             .fonts
             .iter()
             .filter(|f| !f.path.trim().is_empty())
-            .map(|f| (f.name.clone(), (Project::resolve_path(dir, &f.path), f.size)))
+            .map(|f| {
+                (f.name.clone(), (Project::resolve_path(dir, &f.path), f.size, f.ranges.clone(), f.symbols.clone()))
+            })
             .collect();
         if wanted == self.loaded {
             return;
@@ -126,13 +130,20 @@ impl FontManager {
         let fallback = definitions.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
         let mut names = HashSet::new();
         self.line_heights.clear();
-        for (name, (path, size)) in &wanted {
+        for (name, (path, size, ranges, symbols)) in &wanted {
             let Ok(bytes) = std::fs::read(path) else { continue };
-            if let Some(metrics) = lvglab_codegen::font::metrics_from_bytes(&bytes, *size) {
+            let metrics = lvglab_codegen::font::metrics_from_bytes(&bytes, *size, ranges, symbols);
+            if let Some(metrics) = metrics {
                 self.line_heights.insert(name.clone(), metrics.line_height as f32);
             }
             let key = format!("asset:{name}");
-            definitions.font_data.insert(key.clone(), FontData::from_owned(bytes).into());
+            // The baseline below the top of the line, in fractions of the size.
+            let baseline = metrics.map(|m| (m.line_height - m.base_line) as f32 / f32::from((*size).max(1)));
+            let tweak = match (lvglab_codegen::font::em_metrics(&bytes), baseline) {
+                (Some((a, d)), Some(b)) => lvgl_tweak(a, d, b),
+                _ => FontTweak::default(),
+            };
+            definitions.font_data.insert(key.clone(), FontData::from_owned(bytes).tweak(tweak).into());
             let mut chain = vec![key];
             chain.extend(fallback.iter().cloned());
             definitions.families.insert(FontFamily::Name(name.as_str().into()), chain);
@@ -141,5 +152,42 @@ impl FontManager {
         ctx.set_fonts(definitions);
         self.loaded = wanted;
         self.pending = Some(names);
+    }
+}
+
+type FontKey = (PathBuf, u16, String, String);
+
+/// egui sizes a font so that ascent − descent fills the font size, LVGL's
+/// converter so that the em does. This tweak makes egui draw the glyphs at
+/// LVGL's size and on LVGL's baseline, `baseline` × size below the top of the
+/// line. All values are fractions of the em.
+fn lvgl_tweak(ascent: f32, descent: f32, baseline: f32) -> FontTweak {
+    let height = ascent - descent;
+    if height <= 0.0 {
+        return FontTweak::default();
+    }
+    // egui: glyphs at size × scale / height; baseline at ascent / height × size
+    // plus size × scale × y_offset_factor − (1 − scale) / 2 × (ascent + descent) / height × size.
+    let scale = height;
+    let y_offset_factor = (baseline - ascent / height + (1.0 - scale) * 0.5 * (ascent + descent) / height) / scale;
+    FontTweak { scale, y_offset_factor, ..FontTweak::default() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tweak_matches_lvgl_size_and_baseline() {
+        let (ascent, descent, target) = (0.95_f32, -0.25_f32, 0.82_f32);
+        let tweak = lvgl_tweak(ascent, descent, target);
+        let size = 40.0_f32;
+        let height = ascent - descent;
+        // The formulas of epaint's FontImpl::new.
+        let em = size * tweak.scale / height;
+        let baseline = ascent / height * size + size * tweak.scale * tweak.y_offset_factor
+            - (1.0 - tweak.scale) * 0.5 * (ascent + descent) / height * size;
+        assert!((em - size).abs() < 1e-4, "{em}");
+        assert!((baseline - target * size).abs() < 1e-3, "{baseline}");
     }
 }
