@@ -59,6 +59,9 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Start page** with the recent projects (display, LVGL version, screens, last change) and the ways to begin.
 - **New project dialog**: name, display (presets, resolution, round or rectangular), LVGL version and theme.
 - **Welcome tour**: 15 steps that highlight and explain the main areas; Help → Welcome tour repeats it.
+- **Merge projects** (File → Merge project…): take screens of another project (or a SquareLine project) over,
+  with the components, fonts, images and theme colors they use. A wizard lists every name that already
+  exists; rename the incoming entry or use the existing one. References between the merged screens follow.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
   round display masking, zoom, pan, grid and snapping.
 - Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
@@ -106,9 +109,11 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 
 ## Screenshots
 
-| Start page | New project | Welcome tour |
-|---|---|---|
-| ![Start page](docs/start-page.png) | ![New project](docs/new-project.png) | ![Welcome tour](docs/welcome-tour.png) |
+| Start page | New project |
+|---|---|
+| ![Start page](docs/start-page.png) | ![New project](docs/new-project.png) |
+| **Welcome tour** | **Merge projects** |
+| ![Welcome tour](docs/welcome-tour.png) | ![Merge projects](docs/merge.png) |
 
 ## Compatibility
 
@@ -162,7 +167,7 @@ lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [
 | `project.lvglab` / `file.spj` | Opens a studio project, or imports a SquareLine project. |
 | `--select <widget>` | Selects a widget by name after opening. |
 | `--simulate` | Starts the simulator with the record overlay. |
-| `--dialog <name>` | Opens `start`, `new`, `preferences`, `about`, `discard`, `close` or the welcome tour (`tour`, `tour:<step>`) at start (documentation). |
+| `--dialog <name>` | Opens `start`, `new`, `preferences`, `about`, `discard`, `close`, the welcome tour (`tour`, `tour:<step>`) or the merge wizard (`merge:<file>`, `merge-conflicts:<file>`) at start (documentation). |
 | `--screenshot <out.png>` | Renders the window into a PNG and exits (documentation, CI). |
 
 Started without a project, LVGLab shows the start page (unless *Open the last project on start* is enabled

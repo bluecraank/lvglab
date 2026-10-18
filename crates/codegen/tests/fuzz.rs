@@ -571,3 +571,30 @@ fn odd_font_ranges_are_rejected_or_parsed() {
         let _ = lvglab_codegen::font::code_points(&ranges, &symbols);
     });
 }
+
+#[test]
+fn merging_random_projects_never_crashes() {
+    campaign("merging_random_projects_never_crashes", 30_000, 120, |seed| {
+        use lvglab_model::merge;
+        let mut rng = Rng::new(seed);
+        let mut target = random_project(&mut rng);
+        let source = if rng.chance(30) { target.clone() } else { random_project(&mut rng) };
+        let screens: Vec<WidgetId> = source.screens.iter().filter(|_| rng.chance(70)).map(|s| s.id).collect();
+        let mut conflicts = merge::conflicts(&target, None, &source, None, &screens);
+        // Sometimes keep the proposals, sometimes choose odd names.
+        for conflict in &mut conflicts {
+            if rng.chance(20) {
+                conflict.resolution = if conflict.can_use_existing && rng.chance(50) {
+                    merge::Resolution::UseExisting
+                } else {
+                    merge::Resolution::Rename(rng.text())
+                };
+            }
+        }
+        let _ = merge::problems(&target, &source, &screens, &conflicts);
+        merge::merge(&mut target, &source, None, &screens, &conflicts);
+        let mut ids = std::collections::HashSet::new();
+        assert!(target.every_widget().iter().all(|w| ids.insert(w.id)), "ids stay unique");
+        exercise(&mut target);
+    });
+}

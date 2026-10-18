@@ -53,6 +53,9 @@ pub enum Command {
     CreateProject(Box<NewProject>),
     /// The start page with the recent projects.
     ShowStartPage,
+    /// Takes screens of another project over (asks for the file).
+    MergeProject,
+    MergeProjectPath(PathBuf),
     Open,
     OpenPath(PathBuf),
     ImportSquareLine,
@@ -109,6 +112,23 @@ impl Studio {
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
             Command::ShowStartPage => self.start_page = Some(crate::start::entries(&self.settings.recent)),
+            Command::MergeProject => {
+                let dialog = self.file_dialog().add_filter(tr("Projects"), &[PROJECT_EXTENSION, "spj"]);
+                if let Some(path) = dialog.pick_file() {
+                    self.execute(Command::MergeProjectPath(path), true);
+                }
+            }
+            Command::MergeProjectPath(path) => {
+                let loaded = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("spj")) {
+                    lvglab_spj::import_file(&path).map(|i| i.project).map_err(|e| e.to_string())
+                } else {
+                    Project::load(&path).map_err(|e| e.to_string())
+                };
+                match loaded {
+                    Ok(source) => self.merge = Some(crate::merge_dialog::MergeWizard::new(source, &path)),
+                    Err(err) => self.show_error(tr("Merge failed"), err),
+                }
+            }
             Command::CreateProject(project) => {
                 self.settings.new_project = project.defaults();
                 self.load_document(Document::new(project.build(), None), tr("New project"));

@@ -164,6 +164,18 @@ impl Action {
             Self::CallFunction { .. } => None,
         }
     }
+
+    /// The widget reference of the action, to rewrite it.
+    pub fn references_mut(&mut self) -> Option<&mut Option<WidgetId>> {
+        match self {
+            Self::ChangeScreen { screen, .. } => Some(screen),
+            Self::ModifyFlag { target, .. }
+            | Self::ModifyState { target, .. }
+            | Self::SetText { target, .. }
+            | Self::SetValue { target, .. } => Some(target),
+            Self::CallFunction { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
