@@ -175,7 +175,7 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
                     ui.horizontal(|ui| {
                         ui.text_edit_singleline(&mut p.export.directory);
                         if ui.small_button(tr("Choose…")).clicked() {
-                            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                            if let Some(folder) = crate::sandbox::FileDialog::new().pick_folder() {
                                 p.export.directory = crate::panels::relative_path(&folder, dir.as_deref());
                             }
                         }

@@ -81,7 +81,7 @@ impl Studio {
     /// Starts a request with the text in the input field.
     pub fn start_assistant(&mut self, ctx: &egui::Context) {
         let request = self.assistant.input.trim().to_owned();
-        if request.is_empty() || self.assistant.is_running() {
+        if request.is_empty() || self.assistant.is_running() || crate::sandbox::active() {
             return;
         }
         let config = Config {

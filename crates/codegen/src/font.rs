@@ -169,7 +169,8 @@ fn render(
 
     let mut out = String::new();
     out.push_str(header);
-    let _ = writeln!(out, "// Font {name}: {size} px, {bpp} bpp, {} glyphs\n", included.len());
+    let _ =
+        writeln!(out, "// Font {}: {size} px, {bpp} bpp, {} glyphs\n", crate::template::comment(name), included.len());
     let _ = write!(
         out,
         "#include \"{include}\"\n\n#ifndef LV_ATTRIBUTE_LARGE_CONST\n    #define LV_ATTRIBUTE_LARGE_CONST\n#endif\n\n"

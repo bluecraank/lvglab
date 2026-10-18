@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::api::Target;
+use crate::template::comment;
 
 #[derive(Debug, thiserror::Error)]
 #[error("cannot load image `{path}`: {source}")]
@@ -63,7 +64,7 @@ pub fn to_c(name: &str, symbol: &str, image: &ConvertedImage, header: &str, incl
         out,
         "\n#include \"{include}\"\n\n#ifndef LV_ATTRIBUTE_MEM_ALIGN\n    #define LV_ATTRIBUTE_MEM_ALIGN\n#endif\n\n"
     );
-    let _ = writeln!(out, "// {name}: {} x {} px, {cf}", image.width, image.height);
+    let _ = writeln!(out, "// {}: {} x {} px, {cf}", comment(name), image.width, image.height);
     let _ = writeln!(out, "static const LV_ATTRIBUTE_MEM_ALIGN uint8_t {symbol}_data[] = {{");
     for chunk in image.data.chunks(16) {
         let bytes: Vec<String> = chunk.iter().map(|b| format!("0x{b:02X}")).collect();
@@ -96,7 +97,7 @@ fn to_c_v9(name: &str, symbol: &str, image: &ConvertedImage, header: &str, inclu
         out,
         "\n#include \"{include}\"\n\n#ifndef LV_ATTRIBUTE_MEM_ALIGN\n    #define LV_ATTRIBUTE_MEM_ALIGN\n#endif\n\n"
     );
-    let _ = writeln!(out, "// {name}: {} x {} px, {cf}", image.width, image.height);
+    let _ = writeln!(out, "// {}: {} x {} px, {cf}", comment(name), image.width, image.height);
     let _ = writeln!(out, "static const LV_ATTRIBUTE_MEM_ALIGN uint8_t {symbol}_data[] = {{");
     for chunk in data.chunks(16) {
         let bytes: Vec<String> = chunk.iter().map(|b| format!("0x{b:02X}")).collect();

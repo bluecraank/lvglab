@@ -10,8 +10,11 @@ mod dialogs;
 mod document;
 mod i18n;
 mod modal;
+#[cfg(test)]
+mod monkey;
 mod panels;
 mod recorder;
+mod sandbox;
 mod settings;
 mod simulator;
 mod start;
