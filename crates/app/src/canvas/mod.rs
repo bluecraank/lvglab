@@ -785,7 +785,7 @@ fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
 }
 
 fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let shown = studio.simulation.as_ref().map_or(studio.screen, |s| s.screen);
         let current = studio.doc.project.widget(shown).map(|s| s.name.clone()).unwrap_or_default();
         let screens: Vec<(WidgetId, String)> =
