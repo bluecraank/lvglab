@@ -45,6 +45,8 @@ pub struct LaunchOptions {
     pub screenshot: Option<PathBuf>,
     /// Exports a PNG of every screen into this folder and exits.
     pub export_screenshots: Option<PathBuf>,
+    /// Gives all widgets random values after opening (for screenshots).
+    pub randomize: bool,
 }
 
 impl LaunchOptions {
@@ -54,6 +56,8 @@ impl LaunchOptions {
         while let Some(arg) = args.next() {
             if arg == "--screenshot" {
                 options.screenshot = args.next().map(PathBuf::from);
+            } else if arg == "--randomize" {
+                options.randomize = true;
             } else if arg == "--export-screenshots" {
                 options.export_screenshots = args.next().map(PathBuf::from);
             } else if arg == "--panel" {
