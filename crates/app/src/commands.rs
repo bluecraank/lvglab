@@ -197,6 +197,8 @@ impl Studio {
     }
 
     fn load_document(&mut self, doc: Document, label: &str) {
+        // A project was opened or created, so the start page has done its job.
+        self.return_to_start = false;
         self.timeline = Timeline::new(&doc.project, label);
         self.doc = doc;
         self.selected = None;

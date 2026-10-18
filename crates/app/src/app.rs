@@ -55,6 +55,9 @@ pub struct Studio {
     pub tour_pending: bool,
     /// The open start page with the recent projects.
     pub start_page: Option<Vec<crate::start::Entry>>,
+    /// An action of the start page runs; show the page again unless it
+    /// opens or creates a project.
+    pub return_to_start: bool,
     /// Where the areas the tour points at were drawn this frame.
     pub anchors: crate::tour::Anchors,
     pub settings: AppSettings,
@@ -174,6 +177,7 @@ impl Studio {
             tour: None,
             tour_pending: false,
             start_page: None,
+            return_to_start: false,
             anchors: crate::tour::Anchors::new(),
             settings,
             assets: AssetCache::default(),
@@ -863,6 +867,12 @@ impl StudioApp {
         for command in std::mem::take(&mut self.studio.commands) {
             self.studio.execute(command, false);
         }
+        let s = &mut self.studio;
+        let waiting = s.new_project.is_some() || s.confirm_discard.is_some() || s.report.is_some();
+        if s.return_to_start && !waiting && s.commands.is_empty() {
+            s.return_to_start = false;
+            s.start_page = Some(crate::start::entries(&s.settings.recent));
+        }
         crate::panels::images::add_pending(ctx, &mut self.studio);
         if let Some(recorder) = &mut self.studio.recorder {
             recorder.receive(ctx);
@@ -978,6 +988,42 @@ mod tests {
         let back = studio.timeline.undo().unwrap();
         assert_eq!(back.lvgl_version, LvglVersion::V8_3_11);
         assert!(back.widget(id).is_some());
+    }
+
+    #[test]
+    fn cancelled_start_page_actions_return_to_the_start_page() {
+        crate::sandbox::enable();
+        let ctx = egui::Context::default();
+        let frame = |app: &mut StudioApp| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| app.run_frame_for_test(ctx));
+        };
+        let mut app = StudioApp::for_test(Studio::new(AppSettings { tour_done: true, ..AppSettings::default() }));
+        // Import, then cancel the file dialog (the sandbox cancels it).
+        app.studio.return_to_start = true;
+        app.studio.push(Command::ImportSquareLine);
+        frame(&mut app);
+        assert!(app.studio.start_page.is_some(), "the start page is back after a cancelled import");
+
+        // New project, then cancel the dialog.
+        app.studio.start_page = None;
+        app.studio.return_to_start = true;
+        app.studio.push(Command::NewProject);
+        frame(&mut app);
+        assert!(app.studio.new_project.is_some() && app.studio.start_page.is_none());
+        app.studio.new_project = None;
+        frame(&mut app);
+        assert!(app.studio.start_page.is_some(), "the start page is back after a cancelled new project");
+
+        // Creating a project does not bring it back.
+        app.studio.start_page = None;
+        app.studio.return_to_start = true;
+        app.studio.push(Command::NewProject);
+        frame(&mut app);
+        let draft = app.studio.new_project.take().unwrap();
+        app.studio.push(Command::CreateProject(Box::new(draft)));
+        frame(&mut app);
+        frame(&mut app);
+        assert!(app.studio.start_page.is_none());
     }
 
     #[test]
