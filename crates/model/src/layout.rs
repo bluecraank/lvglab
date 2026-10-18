@@ -311,6 +311,15 @@ impl<'a> Engine<'_, 'a> {
                 let (_, ipt, _, ipb) = r.padding(&path, "items", state);
                 (cols * col_w, rows * (line_h + ipt + ipb))
             }
+            WidgetKind::Msgbox if r.theme.lvgl9 => {
+                // Header and footer are LV_DPI_DEF / 3 high; the content has small padding.
+                let bar = 130 / 3;
+                let header = !widget.prop_text("title").is_empty() || widget.prop_bool("close_btn");
+                let footer = !widget.prop_text("buttons").trim().is_empty();
+                let (tw, th) = text(&widget.prop_text("text"));
+                let bars = bar * (i32::from(header) + i32::from(footer));
+                (tw.max(200), th + 2 * r.theme.pad_small + bars)
+            }
             WidgetKind::Msgbox => {
                 let (tw, th) = text(&widget.prop_text("text"));
                 (tw.max(200), line_h * 3 + th)
@@ -515,7 +524,7 @@ mod tests {
     }
 
     fn layout_of(screen: &Widget) -> Vec<Rect> {
-        let theme = Theme::new(&ThemeSettings::default(), &DisplaySettings::default());
+        let theme = Theme::new(&ThemeSettings::default(), &DisplaySettings::default(), Default::default());
         let resolver = StyleResolver::new(&theme);
         Layout::compute(screen, 320, 240, &resolver, &FixedMeasure, None).nodes.iter().map(|n| n.rect).collect()
     }
@@ -591,7 +600,7 @@ mod tests {
         let b = a.clone();
         screen.children.push(a);
         screen.children.push(Widget { id: WidgetId(3), ..b });
-        let theme = Theme::new(&ThemeSettings::default(), &DisplaySettings::default());
+        let theme = Theme::new(&ThemeSettings::default(), &DisplaySettings::default(), Default::default());
         let resolver = StyleResolver::new(&theme);
         let layout = Layout::compute(&screen, 320, 240, &resolver, &FixedMeasure, None);
         assert_eq!(layout.hit_test(10, 10), Some(WidgetId(3)));

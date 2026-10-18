@@ -59,7 +59,7 @@ fn check(project: &Project, resolver: &StyleResolver<'_>, path: &[&Widget]) -> O
 
 /// All widgets of the project with characters their font lacks.
 pub fn missing_glyphs(project: &Project) -> Vec<MissingGlyphs> {
-    let theme = Theme::new(&project.theme, &project.display);
+    let theme = Theme::of(project);
     let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
     let mut out = Vec::new();
     for root in project.screens.iter().chain(&project.components) {
@@ -83,7 +83,7 @@ fn visit(project: &Project, resolver: &StyleResolver<'_>, path: &mut Vec<&Widget
 /// The check for a single widget (e.g. the selection).
 pub fn missing_glyphs_of(project: &Project, id: WidgetId) -> Option<MissingGlyphs> {
     let path = project.path_to(id)?;
-    let theme = Theme::new(&project.theme, &project.display);
+    let theme = Theme::of(project);
     let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
     check(project, &resolver, &path)
 }

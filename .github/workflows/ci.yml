@@ -28,19 +28,32 @@ jobs:
       - run: cargo test --workspace
 
   lvgl-compile-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        lvgl: ["8.3.11", "9.2.2", "9.3.0", "9.4.0", "9.5.0", "9.6.0"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Export every widget type
-        run: cargo run -p lvglab-codegen --example all_widgets -- out/ui
-      - name: Compile against LVGL 8.3.11
+        run: cargo run -p lvglab-codegen --example all_widgets -- out/ui ${{ matrix.lvgl }}
+      - name: Compile against LVGL ${{ matrix.lvgl }}
         run: |
-          git clone --depth 1 --branch v8.3.11 https://github.com/lvgl/lvgl.git lvgl
-          printf '#ifndef LV_CONF_H\n#define LV_CONF_H\n#define LV_COLOR_DEPTH 16\n#define LV_FONT_MONTSERRAT_20 1\n#endif\n' > lv_conf.h
+          git clone --depth 1 --branch v${{ matrix.lvgl }} https://github.com/lvgl/lvgl.git lvgl
+          case "${{ matrix.lvgl }}" in
+            8.*)
+              printf '#ifndef LV_CONF_H\n#define LV_CONF_H\n#define LV_COLOR_DEPTH 16\n#define LV_FONT_MONTSERRAT_20 1\n#endif\n' > lv_conf.h
+              flags="" ;;
+            *)
+              printf '#ifndef LV_CONF_H\n#define LV_CONF_H\n#define LV_FONT_MONTSERRAT_20 1\n#endif\n' > lv_conf.h
+              # Only the native LVGL 9 API: no aliases of renamed functions. LVGL 9.6
+              # deprecates lv_list, lv_menu, lv_win and the generic flag functions.
+              flags="-DLV_DISABLE_API_MAPPING -DLV_API_MAP_V8_H -DLV_API_MAP_V9_0_H -DLV_API_MAP_V9_1_H -Wno-deprecated-declarations -Ilvgl/include" ;;
+          esac
           for f in $(find out/ui/src -name '*.c'); do
-            gcc -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only -DLV_CONF_INCLUDE_SIMPLE -I. -Ilvgl -Iout/ui/src "$f"
+            gcc -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only -DLV_CONF_INCLUDE_SIMPLE $flags -I. -Ilvgl -Iout/ui/src "$f"
           done
 
   windows-installer:

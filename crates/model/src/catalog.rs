@@ -1,5 +1,6 @@
-//! The widget catalog: a declarative description of every LVGL 8.3 widget,
-//! its properties, style parts and how it is created in C.
+//! The widget catalog: a declarative description of every LVGL widget, its
+//! properties, style parts and how it is created in C. Templates use the
+//! LVGL 8.3 API; [`V9`] describes where LVGL 9 differs beyond renames.
 //!
 //! Templates use `{parent}` for the parent object expression, `{obj}` for the
 //! widget's C variable, `{w}`/`{h}` for its pixel size and `{key}` for the
@@ -7,7 +8,7 @@
 
 use crate::coord::{Align, Coord};
 use crate::flags::ObjFlag;
-use crate::prop::{Emit, EnumOption, PropDef, PropDefault as D, PropKind as K, opt};
+use crate::prop::{Emit, EmitWhen, EnumOption, PropDef, PropDefault as D, PropKind as K, opt};
 use crate::style::{Part, TEXT_ALIGNS};
 use crate::widget::WidgetKind;
 
@@ -72,6 +73,62 @@ const ITEMS: StyleSlot = StyleSlot::new("items", "Items", Part::Items);
 const TICKS: StyleSlot = StyleSlot::new("ticks", "Ticks", Part::Ticks);
 const CURSOR: StyleSlot = StyleSlot::new("cursor", "Cursor", Part::Cursor);
 
+/// Where creating a widget for LVGL 9 differs from LVGL 8. Plain renames
+/// (`lv_btn_create` → `lv_button_create`, ...) are translated by the code
+/// generator; this covers changed signatures and removed features.
+#[derive(Clone, Copy, Debug)]
+pub struct V9 {
+    pub create: Option<&'static str>,
+    pub post_create: Option<&'static str>,
+    pub post_props: Option<&'static str>,
+    /// Properties emitted differently.
+    pub props: &'static [V9Prop],
+    /// Explains how the widget is exported for LVGL 9.
+    pub note: &'static str,
+    /// LVGL 9 has no such widget; the editor hides it.
+    pub removed: bool,
+}
+
+impl V9 {
+    pub const SAME: Self =
+        Self { create: None, post_create: None, post_props: None, props: &[], note: "", removed: false };
+
+    pub fn prop(&self, key: &str) -> Option<&V9Prop> {
+        self.props.iter().find(|p| p.key == key)
+    }
+}
+
+/// How a property is emitted for LVGL 9. [`Emit::None`] marks a property
+/// LVGL 9 does not have.
+#[derive(Clone, Copy, Debug)]
+pub struct V9Prop {
+    pub key: &'static str,
+    pub emit: Emit,
+    pub when: EmitWhen,
+    /// First LVGL 9 minor release that has the property.
+    pub since: u8,
+}
+
+impl V9Prop {
+    const fn call(key: &'static str, template: &'static str) -> Self {
+        Self { key, emit: Emit::Call(template), when: EmitWhen::Changed, since: 0 }
+    }
+
+    const fn missing(key: &'static str) -> Self {
+        Self { key, emit: Emit::None, when: EmitWhen::Changed, since: 0 }
+    }
+
+    const fn when(mut self, when: EmitWhen) -> Self {
+        self.when = when;
+        self
+    }
+
+    const fn since(mut self, minor: u8) -> Self {
+        self.since = minor;
+        self
+    }
+}
+
 /// Static description of a widget type.
 #[derive(Debug)]
 pub struct WidgetDef {
@@ -108,6 +165,7 @@ pub struct WidgetDef {
     pub initial_flags: &'static [(ObjFlag, bool)],
     /// Object type names used by SquareLine Studio.
     pub squareline: &'static [&'static str],
+    pub v9: V9,
 }
 
 impl WidgetDef {
@@ -166,6 +224,7 @@ const BASE: WidgetDef = WidgetDef {
     flags_off: &[],
     initial_flags: &[],
     squareline: &[],
+    v9: V9::SAME,
 };
 
 // ---------------------------------------------------------------------------
@@ -339,6 +398,7 @@ const LABEL: WidgetDef = WidgetDef {
     ],
     flags_off: &[ObjFlag::Clickable, ObjFlag::ClickFocusable],
     squareline: &["LABEL"],
+    v9: V9 { props: &[V9Prop::call("recolor", "lv_label_set_recolor({obj}, {v});").since(3)], ..V9::SAME },
     ..BASE
 };
 
@@ -757,6 +817,13 @@ const COLORWHEEL: WidgetDef = WidgetDef {
         PropDef::new("color", "Color", K::Color, D::Color(0xFF0000)).call("lv_colorwheel_set_rgb({obj}, {v});"),
     ],
     squareline: &["COLORWHEEL"],
+    v9: V9 {
+        create: Some("lv_obj_create({parent})"),
+        props: &[V9Prop::missing("mode"), V9Prop::missing("fixed_mode"), V9Prop::missing("color")],
+        note: "LVGL 9 has no color wheel; an empty object is created.",
+        removed: true,
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -776,6 +843,11 @@ const SPINNER: WidgetDef = WidgetDef {
     ],
     flags_off: &[ObjFlag::Clickable],
     squareline: &["SPINNER"],
+    v9: V9 {
+        create: Some("lv_spinner_create({parent})"),
+        post_create: Some("lv_spinner_set_anim_params({obj}, {time}, {arc_length});"),
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -824,6 +896,28 @@ lv_meter_set_indicator_value({obj}, {obj}_needle, {value});",
         PropDef::new("needle_color", "Needle color", K::Color, D::Color(0x2196F3)),
     ],
     squareline: &["METER"],
+    v9: V9 {
+        create: Some("lv_scale_create({parent})"),
+        post_props: Some(
+            "lv_scale_set_mode({obj}, LV_SCALE_MODE_ROUND_INNER);\n\
+lv_scale_set_range({obj}, {range.0}, {range.1});\n\
+lv_scale_set_angle_range({obj}, {angle_range});\n\
+lv_scale_set_rotation({obj}, {rotation});\n\
+lv_scale_set_total_tick_count({obj}, {ticks});\n\
+lv_scale_set_major_tick_every({obj}, {major_every});\n\
+lv_scale_set_label_show({obj}, true);\n\
+lv_obj_set_style_length({obj}, 10, LV_PART_ITEMS);\n\
+lv_obj_set_style_line_color({obj}, lv_palette_main(LV_PALETTE_GREY), LV_PART_ITEMS);\n\
+lv_obj_set_style_length({obj}, 15, LV_PART_INDICATOR);\n\
+lv_obj_set_style_line_color({obj}, {major_color}, LV_PART_INDICATOR);\n\
+lv_obj_t * {obj}_needle = lv_line_create({obj});\n\
+lv_obj_set_style_line_width({obj}_needle, 4, LV_PART_MAIN);\n\
+lv_obj_set_style_line_color({obj}_needle, {needle_color}, LV_PART_MAIN);\n\
+lv_scale_set_line_needle_value({obj}, {obj}_needle, {w} / 2 - 10, {value});",
+        ),
+        note: "LVGL 9 has no meter; it is exported as lv_scale with a needle line.",
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -887,6 +981,25 @@ const CHART: WidgetDef = WidgetDef {
             .help("One series per line: #RRGGBB: v1, v2, ... (write #RRGGBB secondary: ... for the secondary Y axis)"),
     ],
     squareline: &["CHART"],
+    v9: V9 {
+        props: &[
+            V9Prop::missing("zoom"),
+            V9Prop::missing("x_major"),
+            V9Prop::missing("x_minor"),
+            V9Prop::missing("x_labels"),
+            V9Prop::missing("x_label_size"),
+            V9Prop::missing("y_major"),
+            V9Prop::missing("y_minor"),
+            V9Prop::missing("y_labels"),
+            V9Prop::missing("y_label_size"),
+            V9Prop::missing("y2_major"),
+            V9Prop::missing("y2_minor"),
+            V9Prop::missing("y2_labels"),
+            V9Prop::missing("y2_label_size"),
+        ],
+        note: "LVGL 9 charts have no zoom and no axis ticks; put an lv_scale next to the chart for an axis.",
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -951,6 +1064,15 @@ lv_canvas_fill_bg({obj}, {fill}, LV_OPA_COVER);",
     props: &[PropDef::new("fill", "Fill color", K::Color, D::Color(0xFFFFFF))],
     flags_off: &[ObjFlag::Clickable],
     squareline: &["CANVAS"],
+    v9: V9 {
+        post_create: Some(
+            "LV_DRAW_BUF_DEFINE_STATIC({obj}_buf, {w}, {h}, LV_COLOR_FORMAT_RGB565);\n\
+LV_DRAW_BUF_INIT_STATIC({obj}_buf);\n\
+lv_canvas_set_draw_buf({obj}, &{obj}_buf);\n\
+lv_canvas_fill_bg({obj}, {fill}, LV_OPA_COVER);",
+        ),
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -1033,6 +1155,13 @@ const TABVIEW: WidgetDef = WidgetDef {
         PropDef::new("tab_size", "Tab bar size", K::Int { min: 10, max: 500 }, D::Int(50)),
     ],
     squareline: &["TABVIEW"],
+    v9: V9 {
+        create: Some("lv_tabview_create({parent})"),
+        post_create: Some(
+            "lv_tabview_set_tab_bar_position({obj}, {tab_pos});\nlv_tabview_set_tab_bar_size({obj}, {tab_size});",
+        ),
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -1114,6 +1243,11 @@ const WIN: WidgetDef = WidgetDef {
         PropDef::new("title", "Title", K::Text, D::Text("Window")).call("lv_win_add_title({obj}, {v});").not_empty(),
     ],
     squareline: &["WINDOW", "WIN"],
+    v9: V9 {
+        create: Some("lv_win_create({parent})"),
+        post_create: Some("lv_obj_set_height(lv_win_get_header({obj}), {header_height});"),
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -1185,6 +1319,21 @@ const MSGBOX: WidgetDef = WidgetDef {
         PropDef::new("close_btn", "Close button", K::Bool, D::Bool(true)),
     ],
     squareline: &["MSGBOX"],
+    v9: V9 {
+        create: Some("lv_msgbox_create({parent})"),
+        props: &[
+            V9Prop::call("title", "lv_msgbox_add_title({obj}, {v});").when(EmitWhen::NotEmpty),
+            V9Prop::call("text", "lv_msgbox_add_text({obj}, {v});").when(EmitWhen::NotEmpty),
+            V9Prop {
+                key: "buttons",
+                emit: Emit::EachCell("lv_msgbox_add_footer_button({obj}, {cell});"),
+                when: EmitWhen::NotEmpty,
+                since: 0,
+            },
+            V9Prop::call("close_btn", "if({v}) lv_msgbox_add_close_button({obj});").when(EmitWhen::Always),
+        ],
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -1320,10 +1469,22 @@ mod tests {
     #[test]
     fn templates_reference_known_props() {
         for def in ALL {
-            for template in [def.create, def.post_create, def.post_props] {
+            let v9 = [def.v9.create, def.v9.post_create, def.v9.post_props].into_iter().flatten();
+            let v9_props = def.v9.props.iter().filter_map(|p| match p.emit {
+                Emit::Call(t) | Emit::EachLine(t) | Emit::EachCell(t) => Some(t),
+                _ => None,
+            });
+            for prop in def.v9.props {
+                assert!(def.prop(prop.key).is_some(), "{}: LVGL 9 property {} is unknown", def.name, prop.key);
+            }
+            for template in [def.create, def.post_create, def.post_props].into_iter().chain(v9).chain(v9_props) {
                 for key in placeholders(template) {
                     let key = key.split('.').next().unwrap();
-                    let builtin = matches!(key, "parent" | "obj" | "w" | "h" | "component_create");
+                    // Property templates also get the value and the loop variables.
+                    let builtin = matches!(
+                        key,
+                        "parent" | "obj" | "w" | "h" | "component_create" | "v" | "line" | "i" | "row" | "col" | "cell"
+                    );
                     assert!(builtin || def.prop(key).is_some(), "{}: unknown placeholder {key}", def.name);
                 }
             }

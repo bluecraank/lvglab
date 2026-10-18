@@ -1,8 +1,11 @@
-//! Conversion of PNG/JPEG/BMP files into LVGL 8 image descriptors
-//! (`LV_IMG_CF_TRUE_COLOR[_ALPHA]`, 16 bit RGB565).
+//! Conversion of PNG/JPEG/BMP files into LVGL image descriptors with 16 bit
+//! RGB565 pixels: `LV_IMG_CF_TRUE_COLOR[_ALPHA]` for LVGL 8,
+//! `LV_COLOR_FORMAT_RGB565[A8]` for LVGL 9.
 
 use std::fmt::Write as _;
 use std::path::Path;
+
+use crate::api::Target;
 
 #[derive(Debug, thiserror::Error)]
 #[error("cannot load image `{path}`: {source}")]
@@ -49,7 +52,10 @@ pub fn placeholder() -> ConvertedImage {
 }
 
 /// C source of an image. `include` is the header that provides LVGL.
-pub fn to_c(name: &str, symbol: &str, image: &ConvertedImage, header: &str, include: &str) -> String {
+pub fn to_c(name: &str, symbol: &str, image: &ConvertedImage, header: &str, include: &str, target: Target) -> String {
+    if target.is_v9() {
+        return to_c_v9(name, symbol, image, header, include);
+    }
     let cf = if image.has_alpha { "LV_IMG_CF_TRUE_COLOR_ALPHA" } else { "LV_IMG_CF_TRUE_COLOR" };
     let mut out = String::with_capacity(image.data.len() * 6 + 512);
     out.push_str(header);
@@ -75,6 +81,41 @@ pub fn to_c(name: &str, symbol: &str, image: &ConvertedImage, header: &str, incl
     out
 }
 
+/// LVGL 9 keeps the alpha bytes of `RGB565A8` in a plane after the colors.
+fn to_c_v9(name: &str, symbol: &str, image: &ConvertedImage, header: &str, include: &str) -> String {
+    let cf = if image.has_alpha { "LV_COLOR_FORMAT_RGB565A8" } else { "LV_COLOR_FORMAT_RGB565" };
+    let data: Vec<u8> = if image.has_alpha {
+        let pixels: Vec<&[u8]> = image.data.chunks(3).collect();
+        pixels.iter().flat_map(|p| [p[0], p[1]]).chain(pixels.iter().map(|p| p[2])).collect()
+    } else {
+        image.data.clone()
+    };
+    let mut out = String::with_capacity(data.len() * 6 + 512);
+    out.push_str(header);
+    let _ = write!(
+        out,
+        "\n#include \"{include}\"\n\n#ifndef LV_ATTRIBUTE_MEM_ALIGN\n    #define LV_ATTRIBUTE_MEM_ALIGN\n#endif\n\n"
+    );
+    let _ = writeln!(out, "// {name}: {} x {} px, {cf}", image.width, image.height);
+    let _ = writeln!(out, "static const LV_ATTRIBUTE_MEM_ALIGN uint8_t {symbol}_data[] = {{");
+    for chunk in data.chunks(16) {
+        let bytes: Vec<String> = chunk.iter().map(|b| format!("0x{b:02X}")).collect();
+        let _ = writeln!(out, "    {},", bytes.join(", "));
+    }
+    out.push_str("};\n\n");
+    let _ = writeln!(out, "const lv_image_dsc_t {symbol} = {{");
+    let _ = writeln!(out, "    .header.magic = LV_IMAGE_HEADER_MAGIC,");
+    let _ = writeln!(out, "    .header.cf = {cf},");
+    let _ = writeln!(out, "    .header.flags = 0,");
+    let _ = writeln!(out, "    .header.w = {},", image.width);
+    let _ = writeln!(out, "    .header.h = {},", image.height);
+    let _ = writeln!(out, "    .header.stride = {},", image.width * 2);
+    let _ = writeln!(out, "    .data_size = sizeof({symbol}_data),");
+    let _ = writeln!(out, "    .data = {symbol}_data,");
+    out.push_str("};\n");
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,10 +131,20 @@ mod tests {
         let converted = convert(&red_blue(), false);
         assert!(!converted.has_alpha);
         assert_eq!(converted.data, vec![0x00, 0xF8, 0x1F, 0x00]);
-        let c = to_c("logo", "ui_img_logo_png", &converted, "// header", "ui.h");
+        let c = to_c("logo", "ui_img_logo_png", &converted, "// header", "ui.h", Target::V8);
         assert!(c.contains("const lv_img_dsc_t ui_img_logo_png = {"));
         assert!(c.contains("#include \"ui.h\""));
         assert!(c.contains(".header.cf = LV_IMG_CF_TRUE_COLOR,"));
+    }
+
+    #[test]
+    fn lvgl_9_stores_alpha_in_its_own_plane() {
+        let rgba = image::RgbaImage::from_fn(2, 1, |x, _| image::Rgba([255, 0, 0, if x == 0 { 255 } else { 128 }]));
+        let c = to_c("logo", "ui_img_logo_png", &convert(&rgba, false), "// h", "ui.h", Target { major: 9, minor: 2 });
+        assert!(c.contains("const lv_image_dsc_t ui_img_logo_png = {"));
+        assert!(c.contains(".header.cf = LV_COLOR_FORMAT_RGB565A8,"));
+        assert!(c.contains(".header.stride = 4,"));
+        assert!(c.contains("0x00, 0xF8, 0x00, 0xF8, 0xFF, 0x80,"));
     }
 
     #[test]

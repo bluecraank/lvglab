@@ -1,6 +1,6 @@
 [package]
 name = "lvglab-codegen"
-description = "LVGL 8 C code and PlatformIO (ESP32 + TFT_eSPI) project generator of LVGLab."
+description = "LVGL 8 and 9 C code and PlatformIO library generator of LVGLab."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

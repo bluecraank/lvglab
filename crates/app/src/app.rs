@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, ViewportCommand};
 use egui_dock::{DockArea, DockState, NodeIndex, TabIndex, TabViewer};
+use lvglab_model::compat::Removed;
 use lvglab_model::flags::StateMask;
 use lvglab_model::{Project, Widget, WidgetId};
 
@@ -13,7 +14,7 @@ use crate::canvas::assets::AssetCache;
 use crate::commands::Command;
 use crate::dialogs;
 use crate::document::{Document, Timeline};
-use crate::i18n::{self, tr};
+use crate::i18n::{self, tr, trf};
 use crate::modal::{self, Action, Tone};
 use crate::panels::{self, Panel};
 use crate::settings::{AppSettings, STORAGE_KEY};
@@ -210,6 +211,36 @@ impl Studio {
     pub fn select_screen(&mut self, id: WidgetId) {
         self.screen = id;
         self.select(Some(id));
+    }
+
+    /// Removes what the project's LVGL release does not support and lists it
+    /// in a report. `switched` says the release was just changed.
+    pub fn remove_unsupported(&mut self, switched: bool) {
+        let removed = self.doc.project.remove_unsupported();
+        if removed.is_empty() {
+            return;
+        }
+        if self.selected.is_some_and(|id| self.doc.project.widget(id).is_none()) {
+            self.select(None);
+        }
+        let version = self.doc.project.lvgl_version.suffix();
+        let lines: Vec<String> = removed
+            .iter()
+            .map(|r| match r {
+                Removed::Widget { name, kind } => trf("{}: widget removed ({})", &[name, &tr(kind.def().name)]),
+                Removed::Prop { widget, label } => trf("{}: {} reset", &[widget, &tr(label)]),
+                Removed::Style { widget, prop } => trf("{}: style {} removed", &[widget, &prop.name()]),
+                Removed::Part { widget, label } => trf("{}: styles of the part {} removed", &[widget, &tr(label)]),
+            })
+            .collect();
+        let title = if switched { trf("Switched to LVGL {}", &[&version]) } else { trf("LVGL {}", &[&version]) };
+        self.notify(trf("{} unsupported entries removed", &[&lines.len()]));
+        self.report = Some(Report {
+            tone: Tone::Warning,
+            title,
+            message: trf("LVGL {} does not support the following, so it was removed. Undo restores it.", &[&version]),
+            lines,
+        });
     }
 }
 
@@ -815,5 +846,36 @@ fn add_themes_tab(dock: &mut DockState<Panel>) {
     }
     if let Some((surface, node, tab)) = dock.find_tab(&Panel::Parameters) {
         dock[surface][node].insert_tab(TabIndex(tab.0 + 1), Panel::Themes);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lvglab_model::WidgetKind;
+    use lvglab_model::project::LvglVersion;
+
+    #[test]
+    fn switching_to_lvgl_9_removes_the_color_wheel_in_one_undoable_step() {
+        let mut studio = Studio::new(AppSettings::default());
+        let screen = studio.doc.project.screens[0].id;
+        let wheel = studio.doc.project.new_widget(WidgetKind::Colorwheel);
+        let id = wheel.id;
+        studio.doc.project.insert(screen, 0, wheel).unwrap();
+        studio.timeline.observe(&studio.doc.project);
+        studio.select(Some(id));
+
+        studio.doc.project.lvgl_version = LvglVersion::V9_6_0;
+        studio.remove_unsupported(true);
+        assert!(studio.doc.project.widget(id).is_none());
+        assert_eq!(studio.selected, None);
+        let report = studio.report.as_ref().expect("the removal is reported");
+        assert_eq!(report.lines, vec!["Colorwheel1: widget removed (Color wheel)".to_owned()]);
+
+        assert!(studio.timeline.observe(&studio.doc.project));
+        assert_eq!(studio.timeline.entries().last().unwrap().label, "LVGL 9.6.0");
+        let back = studio.timeline.undo().unwrap();
+        assert_eq!(back.lvgl_version, LvglVersion::V8_3_11);
+        assert!(back.widget(id).is_some());
     }
 }

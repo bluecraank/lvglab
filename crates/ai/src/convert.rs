@@ -146,6 +146,7 @@ pub fn apply(project: &mut Project, design: &Design) -> Applied {
         applied.screens.push(screen_id);
     }
     project.repair_ids();
+    applied.warnings.extend(project.remove_unsupported().iter().map(ToString::to_string));
     applied
 }
 

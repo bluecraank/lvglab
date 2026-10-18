@@ -131,6 +131,13 @@ pub fn user_message(project: &Project, scope: Scope, request: &str) -> String {
         lvglab_model::project::DisplayShape::Rectangle => "rectangular",
     };
     let _ = writeln!(out, "Display: {} x {} px, {shape}.", d.width, d.height);
+    if project.lvgl_version.is_v9() {
+        let _ = writeln!(
+            out,
+            "Target: LVGL {}. Do not use the colorwheel widget; chart zoom and axis ticks and the styles anim_speed and bg_dither_mode are not available.",
+            project.lvgl_version.suffix()
+        );
+    }
     let theme = &project.theme;
     let _ = writeln!(
         out,

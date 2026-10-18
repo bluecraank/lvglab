@@ -3,7 +3,7 @@
 [![CI](https://github.com/bluecraank/lvglab/actions/workflows/ci.yml/badge.svg)](https://github.com/bluecraank/lvglab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A modern, open source UI designer for **LVGL 8** on **ESP32 with TFT_eSPI**, written in Rust.
+A modern, open source UI designer for **LVGL 8 and 9** on **ESP32**, written in Rust.
 Design screens visually, import existing **SquareLine Studio** projects and export the UI as a
 ready-to-use library for PlatformIO or the Arduino IDE.
 
@@ -22,7 +22,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 - [AI assistant](#ai-assistant)
 - [Importing SquareLine Studio projects](#importing-squareline-studio-projects)
 - [Exporting the UI library](#exporting-the-ui-library)
-- [Using the library on an ESP32 with TFT_eSPI](#using-the-library-on-an-esp32-with-tft_espi)
+- [Using the library in a PlatformIO project](#using-the-library-in-a-platformio-project)
 - [Project file format](#project-file-format)
 - [Translations](#translations)
 - [Architecture](#architecture)
@@ -34,7 +34,7 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 ## Features
 
-**All LVGL 8.3 widgets and parameters**
+**All LVGL widgets and parameters**
 
 - 36 widget types: every core and extra widget of LVGL 8.3. These are Panel (`lv_obj`), Container, Label,
   Button, Image, Image button, Line, Arc, Slider, Switch, Checkbox, Dropdown, Roller, Text area,
@@ -44,6 +44,8 @@ ready-to-use library for PlatformIO or the Arduino IDE.
   background image, border, outline, shadow, text, image, line, arc, transform, flex, grid and misc).
   You can set each of them per part (main, indicator, knob, items, list of a dropdown, …) and per state
   (default, checked, pressed, focused, disabled, … and combinations).
+- The same project exports for LVGL 8.3 or LVGL 9.2 – 9.6 (project settings → LVGL version); see
+  [Compatibility](#compatibility) for what LVGL 9 changes.
 - Object flags, initial states, scrolling (scrollbar mode, direction, snapping), extended click area,
   flex layouts.
 - Events with actions: change screen (with animation), call your own C function, modify a flag or a state,
@@ -82,14 +84,16 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 **Export**
 
-- Clean, readable LVGL 8 C code with the **same file layout and API as a SquareLine export** (`ui_init`,
+- Clean, readable LVGL 8 or LVGL 9 C code with the **same file layout and API as a SquareLine export** (`ui_init`,
   `ui_<Screen>_screen_init/destroy/relocalize`, `ui_img_<file>_png`, `ui_font_<name>`, `ui_theme_set`,
   `ui_object_set_themeable_style_property`, `ui____initial_actions0`), so it replaces a SquareLine export
   without changes to the firmware.
 - Configurable symbol prefix (`ui`, `sett`, …) for several UI libraries in one firmware.
 - Multi-language texts with [lv_i18n](https://github.com/lvgl/lv_i18n) (`_("text")`, `ui_relocalize()`).
-- Byte-swapped images for `LV_COLOR_16_SWAP 1` (checked at compile time).
-- Images are converted to `lv_img_dsc_t` (RGB565, with alpha channel when needed).
+- LVGL 9: only the native API of the selected release, no deprecated aliases of renamed functions.
+- Byte-swapped images for `LV_COLOR_16_SWAP 1` with LVGL 8 (checked at compile time).
+- Images are converted to `lv_img_dsc_t` (LVGL 8) or `lv_image_dsc_t` (LVGL 9), RGB565 with an alpha
+  channel when needed.
 - Fonts are rendered to LVGL bitmap fonts (`lv_font_fmt_txt`, 1/2/4/8 bpp, custom Unicode ranges).
   All font and image data is `const`, so it stays in flash.
 - The export only rewrites generated files. It never touches your own code and removes stale generated
@@ -99,11 +103,11 @@ ready-to-use library for PlatformIO or the Arduino IDE.
 
 | Component | Supported |
 |---|---|
-| Generated code | **LVGL 8.3.x** (8.3.0 – 8.3.11). Verified by compiling against LVGL 8.3.11 with `-Wall -Wextra`. |
-| LVGL 9 | Not supported (different API). |
-| Target | ESP32 family (ESP32, S2, S3, C3) with a display driven by [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI). The generated UI code itself is platform independent. |
-| Color depth | 16 bit (`LV_COLOR_DEPTH 16`, RGB565). |
-| SquareLine Studio import | `.spj` projects of SquareLine Studio 1.x for LVGL 8 (tested with editor 1.6.2 / LVGL 8.3.11, board "Arduino with TFT_eSPI"). |
+| Generated code | **LVGL 8.3.x** (8.3.0 – 8.3.11) and **LVGL 9.2 – 9.6**, chosen in the project settings. Every release is verified by compiling an export with every widget type (`-Wall -Wextra -Werror`; for LVGL 9 without the aliases of renamed functions). |
+| LVGL 9 differences | LVGL 9 has no meter and no color wheel: a meter is exported as `lv_scale` with a needle line, a color wheel as an empty object. Chart zoom and axis ticks, the styles `anim_speed` and `bg_dither_mode` and the blend mode *Replace* do not exist in LVGL 9 and are skipped. The export lists every change. While LVGL 9 is selected the editor hides the color wheel and these settings, and switching a project to LVGL 9 removes them (undo restores them). The canvas shows the look of the selected release. LVGL 9.6 marks `lv_list`, `lv_menu`, `lv_win` and `lv_obj_add_flag` as deprecated; the code builds with deprecation warnings. |
+| Target | ESP32 family (ESP32, S2, S3, C3). The generated UI code is platform independent and works with any display driver. |
+| Color depth | Images are RGB565. LVGL 8 needs `LV_COLOR_DEPTH 16`; LVGL 9 converts images while drawing. |
+| SquareLine Studio import | `.spj` projects of SquareLine Studio 1.x (tested with editor 1.6.2 / LVGL 8.3.11). Projects for an LVGL 9 release LVGLab does not list (e.g. 9.1) target the nearest supported one. |
 | Editor platforms | Windows, Linux and macOS (anything [eframe](https://github.com/emilk/egui) supports). |
 
 ## Getting started
@@ -224,8 +228,8 @@ The import creates a new, unsaved studio project. Save it as `.lvglab` to keep i
 What is imported:
 
 - Display resolution, round/rectangular shape, theme mode and colors, LVGL version
-- Export settings: variable prefix (`custom_variable_prefix`), multi-language mode, byte swap of the
-  TFT_eSPI board. The library is named after the project folder (e.g. `ui_round`).
+- Export settings: variable prefix (`custom_variable_prefix`), multi-language mode. Byte swap is switched
+  on, as in SquareLine's Arduino exports. The library is named after the project folder (e.g. `ui_round`).
 - **Components** from `components/*.ecomp`.
 - **Color themes** from `Themes.slt`. Styles that use a theme color stay bound to it.
 - Texts marked as translatable (labels, check boxes)
@@ -286,15 +290,15 @@ All names start with the **symbol prefix** (`ui` above). Settings under **Projec
 | Library name | Folder and library name, e.g. `ui_round` (the name used in `lib_ignore`). |
 | Symbol prefix | Prefix of all files and symbols. Use different prefixes for libraries in one firmware (`ui`, `sett`). |
 | Multiple languages | Texts marked as *Translate* are wrapped in `_()` of lv_i18n; `ui.h` includes `lv_i18n.h`. |
-| Byte swap | Image pixels for `LV_COLOR_16_SWAP 1`. `ui.c` stops the build with `#error` if `lv_conf.h` differs. |
+| Byte swap | LVGL 8: image pixels for `LV_COLOR_16_SWAP 1`; `ui.c` stops the build with `#error` if `lv_conf.h` differs. LVGL 9 swaps the bytes in the flush callback instead (see below). |
 
 Generated files start with `// Generated by LVGLab`. Only those files are overwritten or
 removed on the next export.
 
-## Using the library on an ESP32 with TFT_eSPI
+## Using the library in a PlatformIO project
 
 1. Export the library into the `lib` folder of your PlatformIO project (export folder `lib`, library name `ui`).
-2. Add LVGL and TFT_eSPI to `platformio.ini` and point LVGL to your `lv_conf.h`:
+2. Add LVGL and your display driver to `platformio.ini` and point LVGL to your `lv_conf.h`:
 
 ```ini
 [env:esp32dev]
@@ -302,49 +306,37 @@ platform = espressif32
 board = esp32dev
 framework = arduino
 lib_deps =
-    lvgl/lvgl@8.3.11
-    bodmer/TFT_eSPI@^2.5.43
+    lvgl/lvgl@8.3.11           ; or e.g. lvgl/lvgl@9.6.0 for an LVGL 9 project
+    ; your display driver library
 build_flags =
     -D LV_CONF_INCLUDE_SIMPLE
     -I include                 ; folder containing lv_conf.h
-    ; TFT_eSPI configuration, e.g.:
-    -D USER_SETUP_LOADED=1
-    -D ILI9341_DRIVER=1
-    -D TFT_MOSI=23 -D TFT_SCLK=18 -D TFT_CS=15 -D TFT_DC=2 -D TFT_RST=4
-    -D SPI_FREQUENCY=40000000
 ```
 
-3. Your `lv_conf.h` must set `LV_COLOR_DEPTH 16` and enable every built-in Montserrat size the UI uses
-   (`LV_FONT_MONTSERRAT_<n> 1`). The generated `ui.c` stops the build with a clear `#error` if
-   something is missing.
-4. Initialize LVGL and the display, then call `ui_init()`:
+3. Your `lv_conf.h` must enable every built-in Montserrat size the UI uses (`LV_FONT_MONTSERRAT_<n> 1`),
+   and with LVGL 8 set `LV_COLOR_DEPTH 16`. The generated `ui.c` stops the build with a clear `#error`
+   if something is missing or the LVGL major version does not match the project.
+4. Initialize LVGL and the display, then call `ui_init()`. With LVGL 8:
 
 ```cpp
 #include <Arduino.h>
 #include <lvgl.h>
-#include <TFT_eSPI.h>
 #include <ui.h>
 
 static const uint16_t screen_width = 320, screen_height = 240;
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t buf[screen_width * 40];
-TFT_eSPI tft;
 
 static void flush(lv_disp_drv_t * disp, const lv_area_t * area, lv_color_t * color_p)
 {
-    uint32_t w = area->x2 - area->x1 + 1, h = area->y2 - area->y1 + 1;
-    tft.startWrite();
-    tft.setAddrWindow(area->x1, area->y1, w, h);
-    tft.pushColors((uint16_t *)&color_p->full, w * h, true);  // swap bytes for SPI
-    tft.endWrite();
+    // Send the pixels of `area` to the display with your driver, then:
     lv_disp_flush_ready(disp);
 }
 
 void setup()
 {
     lv_init();
-    tft.begin();
-    tft.setRotation(1);
+    // Initialize the display driver here.
     lv_disp_draw_buf_init(&draw_buf, buf, NULL, screen_width * 40);
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
@@ -364,6 +356,42 @@ void loop()
 ```
 
 The LVGL tick must run, e.g. with `LV_TICK_CUSTOM 1` and `LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())` in `lv_conf.h`.
+
+With LVGL 9 the display is created with `lv_display_create()` and the tick comes from a callback:
+
+```cpp
+#include <Arduino.h>
+#include <lvgl.h>
+#include <ui.h>
+
+static const uint16_t screen_width = 320, screen_height = 240;
+static uint8_t buf[screen_width * 40 * 2];
+
+static void flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map)
+{
+    // SPI displays usually expect the high byte first (LVGL 9.6: lv_draw_rgb565_swap):
+    lv_draw_sw_rgb565_swap(px_map, lv_area_get_size(area));
+    // Send the pixels of `area` to the display with your driver, then:
+    lv_display_flush_ready(disp);
+}
+
+void setup()
+{
+    lv_init();
+    lv_tick_set_cb([]() -> uint32_t { return millis(); });
+    // Initialize the display driver here.
+    lv_display_t * display = lv_display_create(screen_width, screen_height);
+    lv_display_set_flush_cb(display, flush);
+    lv_display_set_buffers(display, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    ui_init();
+}
+
+void loop()
+{
+    lv_timer_handler();
+    delay(5);
+}
+```
 
 ## Project file format
 
@@ -458,11 +486,11 @@ cargo test --workspace                         # unit tests of all crates
 cargo clippy --workspace --all-targets         # lints
 cargo fmt --all                                # formatting
 cargo run -p lvglab-codegen --example export_spj -- my.spj out/ui   # headless SquareLine → library export
-cargo run -p lvglab-codegen --example all_widgets -- out/ui         # every widget type, for compile checks
+cargo run -p lvglab-codegen --example all_widgets -- out/ui 9.6.0   # every widget type, for compile checks
 ```
 
-The generated C code is checked by compiling an export with every widget type against LVGL 8.3.11
-(`gcc -std=c99 -Wall -Wextra`) and by rendering it with LVGL on the desktop.
+The generated C code is checked by compiling an export with every widget type against LVGL 8.3.11 and
+9.2 – 9.6 (`gcc -std=c99 -Wall -Wextra -Werror`, see the CI); the LVGL 8 export is also rendered with LVGL on the desktop.
 
 Contributions are welcome: issues, translations, widget previews and importer improvements.
 

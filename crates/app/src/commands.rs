@@ -326,11 +326,14 @@ impl Studio {
         if copy.kind == lvglab_model::WidgetKind::Screen {
             self.doc.project.screens.push(copy);
             self.select_screen(id);
+            self.remove_unsupported(false);
             return;
         }
         let Some(parent) = self.insertion_parent(copy.kind) else { return };
         if self.doc.project.insert(parent, usize::MAX, copy).is_ok() {
             self.select(Some(id));
+            // The copy may come from a project for another LVGL release.
+            self.remove_unsupported(false);
         }
     }
 

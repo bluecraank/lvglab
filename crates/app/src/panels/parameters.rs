@@ -5,6 +5,7 @@
 //! changed, so pickers can read the rest of the project meanwhile.
 
 use eframe::egui::{self, RichText};
+use lvglab_model::compat;
 use lvglab_model::coord::Align;
 use lvglab_model::flags::{Dir, FlexAlign, FlexFlow, ObjFlag, ObjState, ScrollbarMode, SnapMode};
 use lvglab_model::prop::{PropDef, PropKind, PropValue};
@@ -125,7 +126,8 @@ fn align_picker(ui: &mut egui::Ui, align: &mut Align) {
 
 fn properties(ui: &mut egui::Ui, project: &Project, widget: &mut Widget) {
     grid(ui, ("props_grid", widget.kind), |ui| {
-        for def in widget.def().props {
+        let (version, kind) = (project.lvgl_version, widget.kind);
+        for def in widget.def().props.iter().filter(|d| compat::prop_supported(version, kind, d.key)) {
             let mut value = widget.prop(def.key).unwrap_or_else(|| def.default_value());
             label(ui, tr(def.label), tr(def.help));
             if prop_editor(ui, project, widget, def, &mut value) {

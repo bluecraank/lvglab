@@ -198,7 +198,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
         );
         return;
     };
-    let theme = Theme::new(&project.theme, &project.display);
+    let theme = Theme::of(project);
     let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
     let measure = EguiMeasure { ctx: ui.ctx(), assets: &studio.assets, project, images: studio.assets.image_sizes() };
     let preview_state = match &studio.simulation {

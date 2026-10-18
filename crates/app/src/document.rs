@@ -212,6 +212,10 @@ impl Timeline {
 
 /// A short human readable description of what changed between two states.
 pub fn describe_change(old: &Project, new: &Project) -> String {
+    // Switching the release also removes what it does not support.
+    if old.lvgl_version != new.lvgl_version {
+        return format!("LVGL {}", new.lvgl_version.suffix());
+    }
     let old_widgets = old.every_widget();
     let new_widgets = new.every_widget();
     if new_widgets.len() > old_widgets.len() {

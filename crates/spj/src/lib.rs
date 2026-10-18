@@ -57,8 +57,10 @@ pub fn import_file(path: &Path) -> Result<Imported, ImportError> {
 pub fn import_str(json: &str, base_dir: Option<&Path>, fallback_name: &str) -> Result<Imported, ImportError> {
     let file: SpjFile = serde_json::from_str(json)?;
     let mut importer = Importer::new(base_dir);
-    let project = importer.run(file, fallback_name);
-    Ok(Imported { project, warnings: importer.warnings() })
+    let mut project = importer.run(file, fallback_name);
+    let mut warnings = importer.warnings();
+    warnings.extend(project.remove_unsupported().iter().map(ToString::to_string));
+    Ok(Imported { project, warnings })
 }
 
 struct PendingRef {
@@ -164,8 +166,18 @@ impl<'a> Importer<'a> {
         if let Some(version) = info.lvgl_version.as_deref() {
             match LvglVersion::from_suffix(version) {
                 Some(v) => self.project.lvgl_version = v,
-                None if version.starts_with("8.") => {}
-                None => self.warn(format!("LVGL {version} is not supported; the project targets LVGL 8.3")),
+                None => match LvglVersion::nearest(version) {
+                    Some(v) => {
+                        self.project.lvgl_version = v;
+                        if v.is_v9() {
+                            self.warn(format!(
+                                "LVGL {version} is not supported; the project targets LVGL {}",
+                                v.suffix()
+                            ));
+                        }
+                    }
+                    None => self.warn(format!("LVGL {version} is not supported; the project targets LVGL 8.3")),
+                },
             }
         }
         let export = &mut self.project.export;
@@ -181,13 +193,8 @@ impl<'a> Importer<'a> {
                 export.library_name = name;
             }
         }
-        // SquareLine's TFT_eSPI board exports for LV_COLOR_16_SWAP 1.
+        // Like SquareLine's Arduino exports, for LV_COLOR_16_SWAP 1.
         export.swap_bytes = true;
-        if let Some(board) = &info.board {
-            if !board.contains("TFT_eSPI") {
-                self.warn(format!("board `{board}` was replaced by ESP32 + TFT_eSPI"));
-            }
-        }
     }
 
     /// Reads the component definitions from `components/*.ecomp`.

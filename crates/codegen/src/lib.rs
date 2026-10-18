@@ -1,6 +1,6 @@
 //! Code generation for LVGLab projects.
 //!
-//! * [`generate_ui`] produces the LVGL 8 C sources of the UI (screens,
+//! * [`generate_ui`] produces the LVGL 8 or 9 C sources of the UI (screens,
 //!   events, helpers, converted images and fonts).
 //! * [`generate_library`] wraps them into a library folder (`library.json`,
 //!   `library.properties`, `src/`) that drops into the `lib` folder of a
@@ -9,6 +9,7 @@
 //! Both are pure functions returning [`GeneratedFile`]s; [`write`] puts them
 //! on disk without touching files the user owns.
 
+pub mod api;
 pub mod font;
 pub mod glyphs;
 pub mod image;
@@ -65,17 +66,20 @@ fn build_ui(project: &Project, project_dir: Option<&Path>) -> Output {
     let mut warnings = Vec::new();
     let mut files = Vec::new();
     let mut decls = ui::AssetDecls { montserrat: used_builtin_fonts(project), ..ui::AssetDecls::default() };
+    let target = api::Target::of(project);
+    // LVGL 9 swaps the bytes in the display driver, not in the images.
+    let swap = project.export.swap_bytes && !target.is_v9();
 
     for asset in &project.assets.images {
         let path = Project::resolve_path(project_dir, &asset.path);
-        let converted = image::load(&path, project.export.swap_bytes).unwrap_or_else(|err| {
+        let converted = image::load(&path, swap).unwrap_or_else(|err| {
             warnings.push(format!("{err}; a transparent placeholder is used"));
             image::placeholder()
         });
         let symbol = names.image(&asset.name);
         files.push(GeneratedFile::text(
             format!("{symbol}.c"),
-            image::to_c(&asset.name, &symbol, &converted, &header, &include),
+            image::to_c(&asset.name, &symbol, &converted, &header, &include, target),
             WritePolicy::Overwrite,
         ));
         decls.images.push((symbol, asset.path.clone()));

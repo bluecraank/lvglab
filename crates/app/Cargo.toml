@@ -1,6 +1,6 @@
 [package]
 name = "lvglab"
-description = "A modern UI designer for LVGL 8 on ESP32 with TFT_eSPI, with SquareLine Studio import."
+description = "A modern UI designer for LVGL 8 and 9 on ESP32, with SquareLine Studio import."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
