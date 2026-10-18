@@ -148,13 +148,18 @@ fn row(ui: &mut egui::Ui, entry: &Entry) -> RowAction {
     let palette = visuals::palette(ui.ctx());
     let width = ui.available_width();
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 58.0), Sense::click());
-    let hovered = response.hovered();
+    // The texts inside must not catch the pointer: the whole row is one target.
+    let hovered = ui.rect_contains_pointer(rect);
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     if hovered {
         ui.painter().rect_filled(rect, 8, ui.visuals().widgets.hovered.bg_fill);
     }
     let mut action = RowAction::None;
     let inner = rect.shrink2(vec2(10.0, 8.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::left_to_right(Align::Center)));
+    child.style_mut().interaction.selectable_labels = false;
     // A small picture of the display shape.
     let (icon, _) = child.allocate_exact_size(vec2(34.0, 34.0), Sense::hover());
     let stroke = Stroke::new(2.0_f32, if entry.info.is_some() { ACCENT } else { palette.muted });
@@ -212,8 +217,64 @@ fn row(ui: &mut egui::Ui, entry: &Entry) -> RowAction {
             action = RowAction::Remove;
         }
     });
-    if matches!(action, RowAction::None) && response.clicked() && entry.info.is_some() {
+    let clicked = response.clicked() || (hovered && ui.input(|i| i.pointer.primary_clicked()));
+    if matches!(action, RowAction::None) && clicked && entry.info.is_some() {
         action = RowAction::Open;
     }
     action
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::AppSettings;
+    use eframe::egui::{Event, PointerButton, RawInput, pos2};
+
+    fn entries() -> Vec<Entry> {
+        let info = |name: &str| Info { name: name.into(), width: 466, height: 466, round: true, version: "9.6.0", screens: 2 };
+        vec![Entry { path: "a.lvglab".into(), info: Some(info("Dashboard")), modified: None }]
+    }
+
+    /// Whether a click at `(x, y)` opens the project.
+    fn opens(x: f32, y: f32) -> bool {
+        let ctx = egui::Context::default();
+        crate::visuals::install(&ctx);
+        let mut studio = Studio::new(AppSettings::default());
+        studio.start_page = Some(entries());
+        let frame = |studio: &mut Studio, events: Vec<Event>| {
+            let input = RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1600.0, 900.0))),
+                events,
+                ..RawInput::default()
+            };
+            let _ = ctx.run(input, |ctx| show(ctx, studio));
+        };
+        let at = pos2(x, y);
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&mut studio, vec![Event::PointerMoved(at)]);
+        frame(&mut studio, vec![button(true)]);
+        frame(&mut studio, vec![button(false)]);
+        studio.commands.iter().any(|c| matches!(c, Command::OpenPath(_)))
+    }
+
+    #[test]
+    fn a_whole_row_opens_its_project() {
+        // Sweep a horizontal line through the row: where it opens, it opens everywhere.
+        let rows: Vec<f32> = (380..520).step_by(4).map(|y| y as f32).collect();
+        let y = rows
+            .iter()
+            .copied()
+            .find(|y| (700..1100).step_by(8).any(|x| opens(x as f32, *y)))
+            .expect("some click opens the project");
+        let hits: Vec<i32> = (500..1300).step_by(4).filter(|x| opens(*x as f32, y)).collect();
+        let (first, last) = (hits[0], *hits.last().unwrap());
+        let gaps: Vec<i32> = (first..=last).step_by(4).filter(|x| !hits.contains(x)).collect();
+        assert!(last - first > 300, "the row is wide: {first}..{last}");
+        assert!(gaps.is_empty(), "parts of the row do not react to clicks: {gaps:?}");
+    }
 }
