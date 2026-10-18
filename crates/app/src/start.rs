@@ -68,7 +68,7 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
             ui.label(RichText::new("LVGLab").size(26.0).strong().color(ACCENT));
             ui.label(RichText::new(env!("CARGO_PKG_VERSION")).color(palette.muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.small_button("✖").on_hover_text(tr("Close")).clicked() {
+                if close_button(ui, 32.0).on_hover_text(tr("Close")).clicked() {
                     close = true;
                 }
             });
@@ -212,7 +212,8 @@ fn row(ui: &mut egui::Ui, entry: &Entry) -> RowAction {
         });
     });
     child.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if (hovered || entry.info.is_none()) && ui.small_button("✖").on_hover_text(tr("Remove from the list")).clicked()
+        if (hovered || entry.info.is_none())
+            && close_button(ui, 28.0).on_hover_text(tr("Remove from the list")).clicked()
         {
             action = RowAction::Remove;
         }
@@ -222,6 +223,19 @@ fn row(ui: &mut egui::Ui, entry: &Entry) -> RowAction {
         action = RowAction::Open;
     }
     action
+}
+
+/// A square button with a drawn cross (glyph buttons come out small and uneven).
+fn close_button(ui: &mut egui::Ui, side: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::click());
+    let visuals = ui.style().interact(&response);
+    ui.painter().rect(rect, 6, visuals.weak_bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+    let c = rect.center();
+    let d = side * 0.2;
+    let stroke = egui::Stroke::new(2.0_f32, visuals.fg_stroke.color);
+    ui.painter().line_segment([c + egui::vec2(-d, -d), c + egui::vec2(d, d)], stroke);
+    ui.painter().line_segment([c + egui::vec2(-d, d), c + egui::vec2(d, -d)], stroke);
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 #[cfg(test)]
