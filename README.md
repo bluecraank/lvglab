@@ -62,6 +62,8 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Merge projects** (File → Merge project…): take screens of another project (or a SquareLine project) over,
   with the components, fonts, images and theme colors they use. A wizard lists every name that already
   exists; rename the incoming entry or use the existing one. References between the merged screens follow.
+- **Overview** button in the canvas bar: all screens side by side at a glance; click one to open it.
+  The **Hidden** toggle next to Guides switches the orange outline of hidden widgets on and off.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
   round display masking, zoom, pan, grid and snapping.
 - Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).

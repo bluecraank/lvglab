@@ -364,6 +364,7 @@ impl StudioApp {
         if dialog == Some("new") {
             studio.execute(Command::NewProject, true);
         }
+        studio.canvas.overview = dialog == Some("overview");
         // `merge:<file>` opens the merge wizard, `merge-conflicts:<file>` its second step.
         if let Some((step, file)) = dialog.and_then(|d| d.split_once(':')).filter(|(s, _)| s.starts_with("merge")) {
             studio.execute(Command::MergeProjectPath(PathBuf::from(file)), true);

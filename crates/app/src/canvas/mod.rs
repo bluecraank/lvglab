@@ -53,6 +53,8 @@ pub struct CanvasState {
     last_size: Vec2,
     pub nodes: Vec<NodeInfo>,
     drag: Option<Drag>,
+    /// All screens side by side instead of the current one.
+    pub overview: bool,
 }
 
 impl Default for CanvasState {
@@ -65,6 +67,7 @@ impl Default for CanvasState {
             last_size: Vec2::ZERO,
             nodes: Vec::new(),
             drag: None,
+            overview: false,
         }
     }
 }
@@ -161,6 +164,10 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let palette = visuals::palette(ui.ctx());
     let painter = ui.painter_at(rect);
     let background = draw_background(&painter, rect, studio.settings.canvas_background, palette.canvas);
+    if studio.canvas.overview && studio.simulation.is_none() {
+        overview(ui, studio, &response, &painter, rect, background);
+        return;
+    }
 
     let (width, height) = (studio.doc.project.display.width as i32, studio.doc.project.display.height as i32);
     let view = &mut studio.canvas;
@@ -321,6 +328,101 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
 
     interact(ui, studio, &response, handles, to_display, zoom);
     drop_from_palette(ui, studio, &response, &to_display, &screen_rect, &painter);
+}
+
+/// Columns of the overview grid that give the largest screens.
+fn overview_columns(count: usize, area: Vec2, display: Vec2, gap: f32, label: f32) -> (usize, f32) {
+    (1..=count.max(1))
+        .map(|cols| {
+            let rows = count.max(1).div_ceil(cols);
+            let w = (area.x - gap * (cols + 1) as f32) / (cols as f32 * display.x);
+            let h = (area.y - gap * (rows + 1) as f32 - label * rows as f32) / (rows as f32 * display.y);
+            (cols, w.min(h).max(0.01))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .unwrap_or((1, 1.0))
+}
+
+/// All screens side by side; a click opens one.
+fn overview(
+    ui: &egui::Ui,
+    studio: &mut Studio,
+    response: &egui::Response,
+    painter: &egui::Painter,
+    rect: Rect,
+    background: Color32,
+) {
+    const GAP: f32 = 24.0;
+    const LABEL: f32 = 22.0;
+    let project = &studio.doc.project;
+    let display = vec2(project.display.width.max(1) as f32, project.display.height.max(1) as f32);
+    let count = project.screens.len();
+    let (cols, zoom) = overview_columns(count, rect.size(), display, GAP, LABEL);
+    let zoom = zoom.min(2.0);
+    let tile = display * zoom;
+    let rows = count.max(1).div_ceil(cols);
+    let used = vec2(cols as f32 * (tile.x + GAP) - GAP, rows as f32 * (tile.y + LABEL + GAP) - GAP);
+    let start = rect.center() - used / 2.0;
+    let theme = Theme::of(project);
+    let resolver = StyleResolver::new(&theme).with_color_themes(&project.color_themes);
+    let measure = EguiMeasure { ctx: ui.ctx(), assets: &studio.assets, project, images: studio.assets.image_sizes() };
+    let (width, height) = (display.x as i32, display.y as i32);
+    let palette = visuals::palette(ui.ctx());
+    let mut open = None;
+    for (i, screen) in project.screens.iter().enumerate() {
+        let (col, row) = (i % cols, i / cols);
+        let origin = (start + vec2(col as f32 * (tile.x + GAP), row as f32 * (tile.y + LABEL + GAP))).round();
+        let area = Rect::from_min_size(origin, tile);
+        let clip = area.intersect(rect);
+        let expanded = project.expand_instances(screen);
+        let layout = Layout::compute(&expanded, width, height, &resolver, &measure, None);
+        let renderer = Renderer {
+            painter: painter.with_clip_rect(clip),
+            origin,
+            zoom,
+            project,
+            assets: &studio.assets,
+            resolver: &resolver,
+            preview_state: None,
+        };
+        renderer.draw(&layout, clip);
+        // The round mask stays inside the tile, so it does not cover the neighbors.
+        draw_display_frame(&painter.with_clip_rect(clip), area, project.display.shape, background, clip);
+        let hovered = response.hover_pos().is_some_and(|p| area.expand(4.0).contains(p));
+        let current = screen.id == studio.screen;
+        let stroke = match (hovered, current) {
+            (true, _) => Stroke::new(2.0_f32, ACCENT),
+            (false, true) => Stroke::new(2.0_f32, ACCENT.gamma_multiply(0.7)),
+            _ => Stroke::new(1.0_f32, palette.muted.gamma_multiply(0.5)),
+        };
+        match project.display.shape {
+            DisplayShape::Round => {
+                painter.circle_stroke(area.center(), area.width().min(area.height()) / 2.0 + 1.0, stroke);
+            }
+            DisplayShape::Rectangle => {
+                painter.rect_stroke(area, 2, stroke, StrokeKind::Outside);
+            }
+        }
+        let name = if i == 0 { format!("{}  · {}", screen.name, tr("start")) } else { screen.name.clone() };
+        painter.text(
+            area.center_bottom() + vec2(0.0, 6.0),
+            egui::Align2::CENTER_TOP,
+            name,
+            egui::FontId::proportional(13.0),
+            if current { ACCENT } else { ui.visuals().text_color() },
+        );
+        if hovered {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            if response.clicked() {
+                open = Some(screen.id);
+            }
+        }
+    }
+    if let Some(id) = open {
+        studio.select_screen(id);
+        studio.canvas.overview = false;
+        studio.canvas.fit_pending = true;
+    }
 }
 
 /// Plays the UI: mouse input goes to the simulation instead of the editor.
@@ -808,6 +910,10 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
         if studio.simulation.is_none() && ui.button("+").on_hover_text(tr("Add screen")).clicked() {
             studio.push(crate::commands::Command::AddScreen);
         }
+        if studio.simulation.is_none() {
+            ui.toggle_value(&mut studio.canvas.overview, tr("Overview"))
+                .on_hover_text(tr("All screens at a glance; click one to open it"));
+        }
         ui.separator();
         simulation_controls(ui, studio);
         ui.separator();
@@ -835,6 +941,7 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
         ui.toggle_value(&mut s.snap_to_grid, tr("Snap")).on_hover_text(tr("Snap to grid while moving"));
         ui.toggle_value(&mut s.smart_guides, tr("Guides"))
             .on_hover_text(tr("Snap to the edges and centers of neighbors while moving"));
+        ui.toggle_value(&mut s.show_hidden, tr("Hidden")).on_hover_text(tr("Outline hidden widgets in orange"));
         if studio.simulation.is_none() && studio.selected.is_some_and(|id| id != studio.screen) {
             ui.separator();
             align::toolbar(ui, studio);
