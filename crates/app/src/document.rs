@@ -7,6 +7,10 @@ use lvglab_model::{Project, Widget};
 
 use crate::i18n::tr;
 
+mod timeline_file;
+
+pub use timeline_file::path_for as timeline_path;
+
 /// The project being edited plus where it lives on disk.
 pub struct Document {
     pub project: Project,

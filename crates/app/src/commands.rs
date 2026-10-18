@@ -168,7 +168,17 @@ impl Studio {
         match Project::load(&path) {
             Ok(project) => {
                 self.settings.add_recent(path.clone());
+                let saved = self
+                    .settings
+                    .save_timeline
+                    .then(|| Timeline::load(&crate::document::timeline_path(&path), self.settings.history_limit))
+                    .flatten();
+                let loaded = project.clone();
                 self.load_document(Document::new(project, Some(path.clone())), tr("Opened"));
+                if let Some(mut timeline) = saved {
+                    timeline.resume(&loaded, tr("Changed outside LVGLab"));
+                    self.timeline = timeline;
+                }
                 self.notify(trf("Opened {}", &[&path.display()]));
             }
             Err(err) => self.show_error(tr("Open failed"), err.to_string()),
@@ -210,6 +220,11 @@ impl Studio {
                 self.doc.mark_saved(path.clone());
                 let label = if kind == EntryKind::Autosaved { tr("Saved automatically") } else { tr("Saved") };
                 self.timeline.mark_save(&self.doc.project, kind, label);
+                if self.settings.save_timeline {
+                    if let Err(err) = self.timeline.save(&crate::document::timeline_path(&path)) {
+                        self.notify(trf("The timeline could not be saved: {}", &[&err]));
+                    }
+                }
                 self.notify(trf("Saved {}", &[&path.display()]));
                 if !missing.is_empty() {
                     self.report = Some(Report {
