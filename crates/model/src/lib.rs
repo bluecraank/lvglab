@@ -15,6 +15,7 @@ pub mod coord;
 pub mod event;
 pub mod flags;
 pub mod layout;
+pub mod merge;
 pub mod project;
 pub mod prop;
 pub mod series;

@@ -55,6 +55,8 @@ pub struct Studio {
     pub tour_pending: bool,
     /// The open start page with the recent projects.
     pub start_page: Option<Vec<crate::start::Entry>>,
+    /// The open merge wizard.
+    pub merge: Option<crate::merge_dialog::MergeWizard>,
     /// An action of the start page runs; show the page again unless it
     /// opens or creates a project.
     pub return_to_start: bool,
@@ -177,6 +179,7 @@ impl Studio {
             tour: None,
             tour_pending: false,
             start_page: None,
+            merge: None,
             return_to_start: false,
             anchors: crate::tour::Anchors::new(),
             settings,
@@ -361,6 +364,13 @@ impl StudioApp {
         if dialog == Some("new") {
             studio.execute(Command::NewProject, true);
         }
+        // `merge:<file>` opens the merge wizard, `merge-conflicts:<file>` its second step.
+        if let Some((step, file)) = dialog.and_then(|d| d.split_once(':')).filter(|(s, _)| s.starts_with("merge")) {
+            studio.execute(Command::MergeProjectPath(PathBuf::from(file)), true);
+            if step == "merge-conflicts" {
+                crate::merge_dialog::next_step(&mut studio);
+            }
+        }
         if let Some(step) = dialog.and_then(|d| d.strip_prefix("tour")) {
             studio.tour = Some(step.trim_start_matches(':').parse::<usize>().map_or(0, |s| s.saturating_sub(1)));
         } else if dialog.is_none() && options.screenshot.is_none() && !studio.settings.tour_done {
@@ -507,6 +517,7 @@ impl StudioApp {
             item(ui, tr("Open…"), "Ctrl+O", Command::Open);
             item(ui, tr("Start page"), "", Command::ShowStartPage);
             item(ui, tr("Import SquareLine project…"), "Ctrl+I", Command::ImportSquareLine);
+            item(ui, tr("Merge project…"), "", Command::MergeProject);
             ui.separator();
             item(ui, tr("Save"), "Ctrl+S", Command::Save);
             item(ui, tr("Save as…"), "Ctrl+Shift+S", Command::SaveAs);
@@ -854,9 +865,13 @@ impl StudioApp {
             .show(ctx, &mut Viewer { studio: &mut self.studio });
         dialogs::show(ctx, &mut self.studio);
         crate::start::show(ctx, &mut self.studio);
+        crate::merge_dialog::show(ctx, &mut self.studio);
         let s = &mut self.studio;
-        let busy =
-            s.start_page.is_some() || s.new_project.is_some() || s.confirm_discard.is_some() || s.report.is_some();
+        let busy = s.start_page.is_some()
+            || s.new_project.is_some()
+            || s.confirm_discard.is_some()
+            || s.report.is_some()
+            || s.merge.is_some();
         if s.tour_pending && !busy {
             s.tour_pending = false;
             s.tour = Some(0);
