@@ -17,6 +17,8 @@ pub struct LvglPreview {
     pub error: Option<String>,
     /// Statements of the export that LVGL could not run (diagnostics).
     pub skipped: Vec<String>,
+    /// A hint when LVGL drew fewer objects than the screen has widgets.
+    pub missing: Option<String>,
 }
 
 impl LvglPreview {
@@ -44,6 +46,9 @@ impl LvglPreview {
                     let image =
                         ColorImage::from_rgba_unmultiplied([frame.width as usize, frame.height as usize], &frame.rgba);
                     self.texture = Some(ctx.load_texture("lvgl_preview", image, TextureOptions::NEAREST));
+                    self.missing = (frame.created < frame.expected).then(|| {
+                        format!("LVGL created {} of {} objects of this screen", frame.created, frame.expected)
+                    });
                     self.skipped = frame.skipped;
                     self.error = None;
                 }

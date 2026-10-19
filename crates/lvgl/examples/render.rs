@@ -11,6 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         project.lvgl_version = lvglab_model::project::LvglVersion::V8_3_11;
     }
     let frame = lvglab_lvgl::render_screen(&project, index, path.parent())?;
+    eprintln!("created {} of {} objects", frame.created, frame.expected);
     for line in &frame.skipped {
         eprintln!("skipped: {line}");
     }

@@ -278,6 +278,21 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     draw_display_frame(&painter, display, project.display.shape, background, rect);
     studio.canvas.nodes = nodes;
     studio.canvas.display_points = display;
+    if lvgl_picture.is_some() {
+        if let Some(missing) = studio.lvgl_preview.missing.as_deref() {
+            let skipped = studio.lvgl_preview.skipped.join("\n");
+            let spot = rect.left_bottom() + vec2(10.0, -8.0);
+            let text = egui::WidgetText::from(missing).color(visuals::WARNING).into_galley(
+                ui,
+                None,
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            );
+            let area = Rect::from_min_size(spot - vec2(0.0, text.size().y), text.size());
+            painter.galley(area.min, text, visuals::WARNING);
+            ui.interact(area, ui.id().with("lvgl_missing"), Sense::hover()).on_hover_text(skipped);
+        }
+    }
     if studio.settings.preview_renderer == crate::settings::PreviewRenderer::Lvgl && lvgl_picture.is_none() {
         if let Some(reason) = studio.lvgl_preview.error.as_deref().filter(|_| studio.simulation.is_none()) {
             painter.text(
