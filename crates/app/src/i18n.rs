@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
+#[cfg(not(test))]
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use serde::{Deserialize, Serialize};
@@ -69,13 +70,26 @@ impl Language {
     }
 }
 
+#[cfg(not(test))]
 static CURRENT: AtomicU8 = AtomicU8::new(0);
 
+#[cfg(test)]
+thread_local! {
+    /// Every test thread has its own language, so tests that switch it cannot disturb others.
+    static CURRENT_IN_TEST: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
 pub fn set_language(language: Language) {
+    #[cfg(test)]
+    CURRENT_IN_TEST.with(|c| c.set(language as u8));
+    #[cfg(not(test))]
     CURRENT.store(language as u8, Ordering::Relaxed);
 }
 
 pub fn language() -> Language {
+    #[cfg(test)]
+    let index = usize::from(CURRENT_IN_TEST.with(std::cell::Cell::get));
+    #[cfg(not(test))]
     let index = usize::from(CURRENT.load(Ordering::Relaxed));
     Language::ALL.get(index).copied().unwrap_or_default()
 }
