@@ -43,6 +43,8 @@ pub struct Studio {
     pub style_slot: String,
     pub style_state: StateMask,
     pub clipboard: Option<Widget>,
+    /// When this editor last copied; another editor's later copy wins on paste.
+    pub clipboard_time: Option<std::time::SystemTime>,
     pub commands: Vec<Command>,
     pub status: Option<String>,
     pub report: Option<Report>,
@@ -181,6 +183,7 @@ impl Studio {
             style_slot: "main".to_owned(),
             style_state: StateMask::DEFAULT,
             clipboard: None,
+            clipboard_time: None,
             commands: Vec::new(),
             status: None,
             report: None,

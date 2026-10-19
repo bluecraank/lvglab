@@ -230,9 +230,13 @@ impl Studio {
                     self.select(Some(copy));
                 }
             }
-            Command::Copy(id) => self.clipboard = self.doc.project.widget(id).cloned(),
+            Command::Copy(id) => {
+                self.clipboard = self.doc.project.widget(id).cloned();
+                self.share_clipboard();
+            }
             Command::Cut(id) => {
                 self.clipboard = self.doc.project.widget(id).cloned();
+                self.share_clipboard();
                 self.delete(id);
             }
             Command::Paste => self.paste(),
@@ -427,8 +431,39 @@ impl Studio {
         self.select(next);
     }
 
+    /// File that carries the clipboard to other running editors.
+    fn shared_clipboard_path() -> std::path::PathBuf {
+        std::env::temp_dir().join("lvglab-clipboard.json")
+    }
+
+    /// Writes the copied widget where other editors find it.
+    fn share_clipboard(&mut self) {
+        let Some(widget) = &self.clipboard else { return };
+        if crate::sandbox::active() {
+            return;
+        }
+        if let Ok(text) = serde_json::to_string(widget) {
+            let _ = std::fs::write(Self::shared_clipboard_path(), text);
+        }
+        self.clipboard_time = Some(std::time::SystemTime::now());
+    }
+
+    /// A widget copied in another editor after this editor's own copy.
+    fn foreign_clipboard(&self) -> Option<lvglab_model::Widget> {
+        if crate::sandbox::active() {
+            return None;
+        }
+        let path = Self::shared_clipboard_path();
+        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok()?;
+        // An editor reads its own copy from memory.
+        if self.clipboard_time.is_some_and(|own| modified <= own + std::time::Duration::from_millis(50)) {
+            return None;
+        }
+        serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    }
+
     fn paste(&mut self) {
-        let Some(clip) = self.clipboard.clone() else { return };
+        let Some(clip) = self.foreign_clipboard().or_else(|| self.clipboard.clone()) else { return };
         let copy = self.doc.project.clone_with_new_ids(&clip);
         let id = copy.id;
         if copy.kind == lvglab_model::WidgetKind::Screen {
