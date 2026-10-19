@@ -21,6 +21,9 @@ pub struct Frame {
     pub rgba: Vec<u8>,
     /// Statements of the generated code the preview could not run.
     pub skipped: Vec<String>,
+    /// Objects LVGL created on the screen and widgets the project has there.
+    pub created: usize,
+    pub expected: usize,
 }
 
 /// LVGL has global state, so only one render runs at a time. The value is the
@@ -46,6 +49,11 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
     let output = lvglab_codegen::generate_ui(project, project_dir);
     let screen_init =
         screen_init_names(&output).get(index).cloned().ok_or_else(|| "this screen has no generated code".to_owned())?;
+    let expected = project.screens.get(index).map_or(0, |screen| {
+        let mut count = 0;
+        project.expand_instances(screen).walk(&mut |_| count += 1);
+        count
+    });
     let (width, height) = (project.display.width as i32, project.display.height as i32);
     let mut state = LVGL.lock().map_err(|_| "LVGL is busy".to_owned())?;
     // SAFETY: LVGL is only used while the lock above is held.
@@ -75,6 +83,7 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
         interpreter.call("ui_init", &[]);
         let screen = *interpreter.screens.first().ok_or_else(|| "the screen was not created".to_owned())?;
         interpreter.call_lvgl("lv_disp_load_scr", &[screen]);
+        let created = interpreter.count_objects(screen);
         ffi::lvglab_refresh();
         let pixels = std::slice::from_raw_parts(ffi::lvglab_pixels(), width as usize * height as usize * 4);
         let mut rgba = Vec::with_capacity(pixels.len());
@@ -93,7 +102,7 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
                 interpreter.call_lvgl("lv_obj_del", &[old as u64]);
             }
         }
-        Ok(Frame { width: width as u32, height: height as u32, rgba, skipped: interpreter.skipped })
+        Ok(Frame { width: width as u32, height: height as u32, rgba, skipped: interpreter.skipped, created, expected })
     }
 }
 

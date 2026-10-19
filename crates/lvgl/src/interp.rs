@@ -200,8 +200,14 @@ pub struct Interpreter {
 
 /// Names that are skipped without a note: they only wire up behavior the
 /// preview does not run.
-const IGNORED_CALLS: &[&str] =
-    &["lv_obj_add_event_cb", "lv_obj_set_user_data", "lv_scr_load_anim", "lv_obj_remove_event_cb"];
+const IGNORED_CALLS: &[&str] = &[
+    "lv_obj_add_event_cb",
+    "lv_obj_set_user_data",
+    "lv_scr_load_anim",
+    "lv_obj_remove_event_cb",
+    // Animations need their sources; the preview draws the first frame only.
+    "lv_animimg_start",
+];
 
 impl Default for Interpreter {
     fn default() -> Self {
@@ -345,6 +351,20 @@ impl Interpreter {
         let function: extern "C" fn(u64, u64, u64, u64, u64, u64, u64, u64) -> u64 =
             unsafe { std::mem::transmute(address) };
         Some(function(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
+    }
+
+    /// Number of objects below and including `object`.
+    pub fn count_objects(&mut self, object: Word) -> usize {
+        let children = self.call_lvgl("lv_obj_get_child_cnt", &[object]).unwrap_or(0) as u32;
+        let mut total = 1;
+        for index in 0..children {
+            if let Some(child) = self.call_lvgl("lv_obj_get_child", &[object, u64::from(index)]) {
+                if child != 0 {
+                    total += self.count_objects(child);
+                }
+            }
+        }
+        total
     }
 
     /// Makes `&name` resolve to a static image descriptor.
@@ -795,6 +815,9 @@ impl Interpreter {
             return self.call(name, &args);
         }
         let address = *self.lvgl_functions.get(name)?;
+        if std::env::var_os("LVGLAB_TRACE").is_some() {
+            eprintln!("{name}({args:x?})");
+        }
         // Missing arguments read as zero; extra registers are ignored by the callee.
         let mut a = [0_u64; 8];
         for (slot, value) in a.iter_mut().zip(&args) {
