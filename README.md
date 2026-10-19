@@ -139,6 +139,13 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 | ![Start page](docs/start-page.png) | ![New project](docs/new-project.png) |
 | **Welcome tour** | **Merge projects** |
 | ![Welcome tour](docs/welcome-tour.png) | ![Merge projects](docs/merge.png) |
+| **Several projects in tabs** | **Search** (Ctrl+F) |
+| ![Tabs](docs/tabs.png) | ![Search](docs/search.png) |
+
+**LVGL preview**: the same screen drawn by the editor (left) and by LVGL itself (right). The built-in
+Montserrat fonts have no umlauts, which only the real library shows:
+
+![Editor renderer and LVGL renderer](docs/lvgl-preview.png)
 
 ## Compatibility
 
@@ -184,12 +191,14 @@ Platform notes:
 ### Command line
 
 ```text
-lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--simulate] [--screenshot <out.png>] [--export-screenshots <folder>] [--randomize]
+lvglab [project.lvglab | squareline.spj]... [--select <widget>] [--dialog <name>] [--simulate] [--renderer editor|lvgl] [--language en|de|es|fr] [--appearance dark|light] [--screenshot <out.png>] [--export-screenshots <folder>] [--randomize]
 ```
 
 | Option | Meaning |
 |---|---|
-| `project.lvglab` / `file.spj` | Opens a studio project, or imports a SquareLine project. |
+| `project.lvglab` / `file.spj` | Opens a studio project, or imports a SquareLine project. Several files open in several tabs. |
+| `--renderer editor\|lvgl` | Preview renderer for this session (see *LVGL preview*). |
+| `--language`, `--appearance` | Language and dark/light appearance for this session, e.g. for documentation screenshots. |
 | `--select <widget>` | Selects a widget by name after opening. |
 | `--simulate` | Starts the simulator with the record overlay. |
 | `--dialog <name>` | Opens `start`, `new`, `preferences`, `about`, `discard`, `close`, the welcome tour (`tour`, `tour:<step>`) or the merge wizard (`merge:<file>`, `merge-conflicts:<file>`) at start (documentation). |
@@ -244,6 +253,8 @@ Keyboard shortcuts:
 | Ctrl+F | Search widgets, properties and styles |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Step back / forward in the timeline |
 | Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+D | Copy, cut, paste, duplicate |
+| Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste the properties of a widget |
+| Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+W | Next / previous project tab, close tab |
 | Del | Delete selection |
 | Arrow keys (+ Shift) | Move selection by 1 px (Shift: configurable, default 10 px) |
 | Space + drag, middle mouse | Pan the canvas |

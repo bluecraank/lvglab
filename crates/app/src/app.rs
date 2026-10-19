@@ -366,10 +366,36 @@ impl StudioApp {
             }
         }
         let reopen = settings.reopen_last.then(|| settings.recent.first().cloned()).flatten().filter(|p| p.exists());
+        match options.language.as_deref() {
+            Some("en") => settings.language = i18n::Language::English,
+            Some("de") => settings.language = i18n::Language::German,
+            Some("es") => settings.language = i18n::Language::Spanish,
+            Some("fr") => settings.language = i18n::Language::French,
+            _ => {}
+        }
+        match options.appearance.as_deref() {
+            Some("dark") => settings.appearance = crate::settings::Appearance::Dark,
+            Some("light") => settings.appearance = crate::settings::Appearance::Light,
+            _ => {}
+        }
+        i18n::set_language(settings.language);
+        visuals::apply_appearance(&cc.egui_ctx, settings.appearance);
+        match options.renderer.as_deref() {
+            Some("lvgl") => settings.preview_renderer = crate::settings::PreviewRenderer::Lvgl,
+            Some("editor") => settings.preview_renderer = crate::settings::PreviewRenderer::Editor,
+            _ => {}
+        }
         let mut studio = Studio::new(settings);
         let dialog = options.dialog.as_deref();
-        match options.file.clone().or(reopen) {
-            Some(file) => studio.execute(Command::OpenPath(file), true),
+        let files = if options.files.is_empty() { reopen.into_iter().collect() } else { options.files.clone() };
+        match files.first().cloned() {
+            Some(file) => {
+                studio.execute(Command::OpenPath(file), true);
+                // More projects open in further tabs.
+                for file in files.into_iter().skip(1) {
+                    studio.execute(Command::OpenPath(file), true);
+                }
+            }
             // Without a project the editor starts with the start page.
             None if (dialog.is_none() && options.screenshot.is_none()) || dialog == Some("start") => {
                 studio.start_page = Some(crate::start::entries(&studio.settings.recent));

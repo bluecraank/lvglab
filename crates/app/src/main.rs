@@ -31,10 +31,16 @@ mod widgets;
 use std::path::PathBuf;
 
 /// Command line:
-/// `lvglab [project.lvglab | squareline.spj] [--select <widget>] [--dialog <name>] [--panel <name>] [--simulate] [--screenshot out.png] [--export-screenshots <folder>]`.
+/// `lvglab [project.lvglab | squareline.spj]... [--renderer editor|lvgl] [--select <widget>] [--dialog <name>] [--panel <name>] [--simulate] [--screenshot out.png] [--export-screenshots <folder>]`.
 #[derive(Default)]
 pub struct LaunchOptions {
-    pub file: Option<PathBuf>,
+    /// Projects to open, each in its own tab.
+    pub files: Vec<PathBuf>,
+    /// `editor` or `lvgl`: the preview renderer for this session.
+    pub renderer: Option<String>,
+    /// `en`, `de`, `es` or `fr` / `dark`, `light`: for this session (documentation).
+    pub language: Option<String>,
+    pub appearance: Option<String>,
     /// Name of a widget to select after opening.
     pub select: Option<String>,
     /// Opens a dialog at start (`start`, `overview`, `search:<text>`, `preferences`, `about`, `new`, `tour`, `tour:<step>`, `merge:<file>`, `merge-conflicts:<file>`, `discard`, `close`);
@@ -59,6 +65,12 @@ impl LaunchOptions {
         while let Some(arg) = args.next() {
             if arg == "--screenshot" {
                 options.screenshot = args.next().map(PathBuf::from);
+            } else if arg == "--renderer" {
+                options.renderer = args.next().map(|s| s.to_string_lossy().into_owned());
+            } else if arg == "--language" {
+                options.language = args.next().map(|s| s.to_string_lossy().into_owned());
+            } else if arg == "--appearance" {
+                options.appearance = args.next().map(|s| s.to_string_lossy().into_owned());
             } else if arg == "--randomize" {
                 options.randomize = true;
             } else if arg == "--export-screenshots" {
@@ -72,7 +84,7 @@ impl LaunchOptions {
             } else if arg == "--select" {
                 options.select = args.next().map(|s| s.to_string_lossy().into_owned());
             } else {
-                options.file = Some(PathBuf::from(arg));
+                options.files.push(PathBuf::from(arg));
             }
         }
         options
