@@ -36,6 +36,12 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
 #[derive(Default)]
 struct Actions {
     select: Option<WidgetId>,
+    /// Ctrl+click: add to or remove from the selection.
+    toggle: Option<WidgetId>,
+    /// Shift+click: everything between the selected row and this one.
+    range: Option<WidgetId>,
+    /// The visible rows from top to bottom.
+    rows: Vec<WidgetId>,
     toggle_hidden: Option<WidgetId>,
     drop: Option<(WidgetId, Drop)>,
     commands: Vec<Command>,
@@ -67,7 +73,8 @@ fn node(ui: &mut egui::Ui, studio: &Studio, widget: &Widget, depth: usize, filte
             ui.add_space(10.0);
         }
         let hidden = widget.is_hidden();
-        let selected = studio.selected == Some(widget.id);
+        let selected = studio.selected == Some(widget.id) || studio.extra_selection.contains(&widget.id);
+        actions.rows.push(widget.id);
         let mut text = RichText::new(format!("{}  {}", widget.def().icon, widget.name));
         if hidden {
             text = text.color(visuals::palette(ui.ctx()).muted).italics();
@@ -86,7 +93,14 @@ fn node(ui: &mut egui::Ui, studio: &Studio, widget: &Widget, depth: usize, filte
     });
     let label = header.inner;
     if label.clicked() {
-        actions.select = Some(widget.id);
+        let modifiers = ui.input(|i| i.modifiers);
+        if modifiers.shift {
+            actions.range = Some(widget.id);
+        } else if modifiers.command {
+            actions.toggle = Some(widget.id);
+        } else {
+            actions.select = Some(widget.id);
+        }
     }
     if label.drag_started() && widget.kind != lvglab_model::WidgetKind::Screen {
         label.dnd_set_drag_payload(LayerDrag(widget.id));
@@ -168,6 +182,19 @@ fn apply(studio: &mut Studio, actions: Actions) {
     if let Some(id) = actions.select {
         studio.select(Some(id));
     }
+    if let Some(id) = actions.toggle {
+        studio.toggle_in_selection(id);
+    }
+    if let Some(id) = actions.range {
+        let anchor = studio.selected.unwrap_or(id);
+        let position = |target: WidgetId| actions.rows.iter().position(|r| *r == target);
+        if let (Some(a), Some(b)) = (position(anchor), position(id)) {
+            let (from, to) = (a.min(b), a.max(b));
+            let ids: Vec<WidgetId> = actions.rows[from..=to].to_vec();
+            studio.select(Some(anchor));
+            studio.extra_selection = ids.into_iter().filter(|r| *r != anchor).collect();
+        }
+    }
     if let Some(id) = actions.toggle_hidden {
         if let Some(widget) = studio.doc.project.widget_mut(id) {
             let hidden = widget.is_hidden();
@@ -184,7 +211,16 @@ fn apply(studio: &mut Studio, actions: Actions) {
             l.parent.map(|p| (p, l.index + offset))
         }),
     };
-    if let Some((parent, index)) = target {
+    let Some((parent, index)) = target else { return };
+    // Dragging a row of the selection moves the whole selection into a container.
+    let selection = studio.selection();
+    if matches!(drop, Drop::Into(_)) && selection.len() > 1 && selection.contains(&dragged) {
+        for id in actions.rows.iter().filter(|r| selection.contains(r)).rev() {
+            if *id != parent {
+                studio.push(Command::Move { id: *id, parent, index });
+            }
+        }
+    } else {
         studio.push(Command::Move { id: dragged, parent, index });
     }
 }
