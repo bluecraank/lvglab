@@ -116,7 +116,14 @@ fn font_usage(project: &Project) -> HashMap<String, usize> {
 }
 
 fn pick_font_file() -> crate::sandbox::FileDialog {
-    crate::sandbox::FileDialog::new().add_filter(tr("Fonts"), &["ttf", "otf"])
+    let dialog = crate::sandbox::FileDialog::new().add_filter(tr("Fonts"), &["ttf", "otf"]);
+    // Start where the fonts of the system are.
+    let system =
+        ["C:/Windows/Fonts", "/Library/Fonts", "/usr/share/fonts"].into_iter().map(Path::new).find(|p| p.is_dir());
+    match system {
+        Some(dir) => dialog.set_directory(dir),
+        None => dialog,
+    }
 }
 
 fn add_fonts(studio: &mut Studio) {
