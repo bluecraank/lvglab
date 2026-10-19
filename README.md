@@ -78,6 +78,7 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
   The **Hidden** toggle next to Guides switches the orange outline of hidden widgets on and off.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with
   round display masking, zoom, pan, grid and snapping.
+- **Copy properties / Paste properties** (Edit menu, layers context menu, Ctrl+Shift+C / Ctrl+Shift+V): the properties, local styles, flags and events of a widget go to all selected widgets of the same type. Name, position, size and children stay; component instances keep their component.
 - Copy and paste also work between two running LVGLab windows (the copied widget travels through a file in the temporary folder). Components, fonts, images and event targets of the source project are not copied; use *File → Merge project…* for whole screens.
 - Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
 - Align and distribute the selection (or one widget in its parent); snap lines to the edges and centers of neighbors.

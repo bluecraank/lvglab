@@ -57,6 +57,10 @@ pub enum Command {
     ExportScreenshots,
     /// Opens the search window.
     Find,
+    /// Remembers the look of a widget (properties, styles, events).
+    CopyProps(WidgetId),
+    /// Gives it to the selected widgets of the same kind.
+    PasteProps,
     /// Random values for the widgets of the current screen or of all screens.
     Randomize {
         all: bool,
@@ -124,6 +128,13 @@ impl Studio {
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
             Command::Randomize { all } => self.randomize(all),
+            Command::CopyProps(id) => {
+                self.props_clipboard = self.doc.project.widget(id).cloned();
+                if self.props_clipboard.is_some() {
+                    self.notify(tr("Properties copied. Select widgets of the same type and paste them."));
+                }
+            }
+            Command::PasteProps => self.paste_props(),
             Command::Find => self.search = Some(crate::search_dialog::SearchState::new()),
             Command::ExportScreenshots => {
                 let project_dir = self.doc.dir().map(Path::to_path_buf);
@@ -460,6 +471,28 @@ impl Studio {
             return None;
         }
         serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    }
+
+    /// Applies the copied look to the selected widgets of the same kind.
+    fn paste_props(&mut self) {
+        let Some(source) = self.props_clipboard.clone() else { return };
+        let (mut changed, mut other) = (0, 0);
+        for id in self.selection() {
+            let Some(widget) = self.doc.project.widget_mut(id) else { continue };
+            if widget.id == source.id {
+                continue;
+            }
+            if widget.copy_look_from(&source) {
+                changed += 1;
+            } else {
+                other += 1;
+            }
+        }
+        if changed > 0 {
+            self.notify(trf("Properties pasted to {} widgets.", &[&changed]));
+        } else if other > 0 {
+            self.notify(tr("The selected widgets have another type than the copied one."));
+        }
     }
 
     fn paste(&mut self) {

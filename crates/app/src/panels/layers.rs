@@ -174,6 +174,8 @@ fn context_menu(ui: &mut egui::Ui, widget: &Widget, actions: &mut Actions) {
     item(ui, tr("Copy"), Command::Copy(id));
     item(ui, tr("Cut"), Command::Cut(id));
     item(ui, tr("Paste"), Command::Paste);
+    item(ui, tr("Copy properties"), Command::CopyProps(id));
+    item(ui, tr("Paste properties"), Command::PasteProps);
     ui.separator();
     item(ui, tr("Delete"), Command::Delete(id));
 }
