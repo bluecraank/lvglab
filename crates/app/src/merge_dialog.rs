@@ -181,6 +181,29 @@ pub fn next_step(studio: &mut Studio) {
     ));
 }
 
+/// Takes a copied screen over. Asks only if names clash.
+pub fn paste_screen(studio: &mut Studio, clip: crate::commands::ScreenClip) {
+    let mut wizard = MergeWizard::new(clip.project, std::path::Path::new(&clip.name));
+    wizard.source_dir = clip.dir;
+    wizard.file = clip.name;
+    let screens = wizard.screens();
+    let target_dir = studio.doc.dir().map(std::path::Path::to_path_buf);
+    let conflicts = merge::conflicts(
+        &studio.doc.project,
+        target_dir.as_deref(),
+        &wizard.source,
+        wizard.source_dir.as_deref(),
+        &screens,
+    );
+    let clean = conflicts.is_empty();
+    wizard.conflicts = Some(conflicts);
+    if clean {
+        apply(studio, wizard);
+    } else {
+        studio.merge = Some(wizard);
+    }
+}
+
 fn primary(text: &str) -> egui::Button<'_> {
     egui::Button::new(RichText::new(text).color(Color32::WHITE).strong()).fill(ACCENT).min_size(egui::vec2(96.0, 30.0))
 }

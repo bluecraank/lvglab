@@ -107,6 +107,23 @@ pub enum Command {
     },
 }
 
+/// A screen on the clipboard: a project that holds only this screen, with the
+/// components, fonts, images and theme colors it uses, and where its files are.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct ScreenClip {
+    pub project: Project,
+    pub dir: Option<PathBuf>,
+    pub name: String,
+    pub screen: WidgetId,
+}
+
+/// What the clipboard file of the editors holds.
+#[derive(serde::Serialize, serde::Deserialize)]
+enum Clip {
+    Widget(lvglab_model::Widget),
+    Screen(ScreenClip),
+}
+
 impl Studio {
     pub fn execute(&mut self, command: Command, confirmed: bool) {
         // A project with unsaved changes is closed only after asking.
@@ -235,13 +252,9 @@ impl Studio {
                     self.select(Some(copy));
                 }
             }
-            Command::Copy(id) => {
-                self.clipboard = self.doc.project.widget(id).cloned();
-                self.share_clipboard();
-            }
+            Command::Copy(id) => self.copy(id),
             Command::Cut(id) => {
-                self.clipboard = self.doc.project.widget(id).cloned();
-                self.share_clipboard();
+                self.copy(id);
                 self.delete(id);
             }
             Command::Paste => self.paste(),
@@ -443,20 +456,44 @@ impl Studio {
         std::env::temp_dir().join("lvglab-clipboard.json")
     }
 
-    /// Writes the copied widget where other editors find it.
+    /// Copies a widget, or a screen with the components, fonts and images it uses.
+    fn copy(&mut self, id: WidgetId) {
+        self.clipboard = None;
+        self.screen_clip = None;
+        let Some(widget) = self.doc.project.widget(id).cloned() else { return };
+        if self.doc.project.screens.iter().any(|s| s.id == id) {
+            let mut project = self.doc.project.clone();
+            project.screens.retain(|s| s.id == id);
+            self.screen_clip = Some(ScreenClip {
+                project,
+                dir: self.doc.dir().map(std::path::Path::to_path_buf),
+                name: widget.name.clone(),
+                screen: id,
+            });
+        } else {
+            self.clipboard = Some(widget);
+        }
+        self.share_clipboard();
+    }
+
+    /// Writes the copy where other editors find it.
     fn share_clipboard(&mut self) {
-        let Some(widget) = &self.clipboard else { return };
+        let clip = match (&self.screen_clip, &self.clipboard) {
+            (Some(screen), _) => Clip::Screen(screen.clone()),
+            (None, Some(widget)) => Clip::Widget(widget.clone()),
+            (None, None) => return,
+        };
         if crate::sandbox::active() {
             return;
         }
-        if let Ok(text) = serde_json::to_string(widget) {
+        if let Ok(text) = serde_json::to_string(&clip) {
             let _ = std::fs::write(Self::shared_clipboard_path(), text);
         }
         self.clipboard_time = Some(std::time::SystemTime::now());
     }
 
-    /// A widget copied in another editor after this editor's own copy.
-    fn foreign_clipboard(&self) -> Option<lvglab_model::Widget> {
+    /// Something copied in another editor after this editor's own copy.
+    fn foreign_clipboard(&self) -> Option<Clip> {
         if crate::sandbox::active() {
             return None;
         }
@@ -467,6 +504,24 @@ impl Studio {
             return None;
         }
         serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    }
+
+    /// Pastes a copied screen. Into the project it came from it is simply
+    /// duplicated; into another project it is merged, with the components,
+    /// fonts and images it uses (and a question for names that exist already).
+    fn paste_screen(&mut self, clip: ScreenClip) {
+        let known = self.doc.project.widget(clip.screen).is_some_and(|w| w.name == clip.name);
+        if known {
+            if let Some(source) = clip.project.widget(clip.screen) {
+                let copy = self.doc.project.clone_with_new_ids(source);
+                let id = copy.id;
+                self.doc.project.screens.push(copy);
+                self.select_screen(id);
+                self.remove_unsupported(false);
+            }
+            return;
+        }
+        crate::merge_dialog::paste_screen(self, clip);
     }
 
     /// Applies the copied look to the selected widgets of the same kind.
@@ -492,7 +547,16 @@ impl Studio {
     }
 
     fn paste(&mut self) {
-        let Some(clip) = self.foreign_clipboard().or_else(|| self.clipboard.clone()) else { return };
+        let own = match (&self.screen_clip, &self.clipboard) {
+            (Some(screen), _) => Some(Clip::Screen(screen.clone())),
+            (None, Some(widget)) => Some(Clip::Widget(widget.clone())),
+            (None, None) => None,
+        };
+        let clip = match self.foreign_clipboard().or(own) {
+            Some(Clip::Widget(widget)) => widget,
+            Some(Clip::Screen(screen)) => return self.paste_screen(screen),
+            None => return,
+        };
         let copy = self.doc.project.clone_with_new_ids(&clip);
         let id = copy.id;
         if copy.kind == lvglab_model::WidgetKind::Screen {
