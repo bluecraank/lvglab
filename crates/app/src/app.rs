@@ -43,6 +43,9 @@ pub struct Studio {
     pub style_slot: String,
     pub style_state: StateMask,
     pub clipboard: Option<Widget>,
+    /// The parked projects of the tabs; the entry of the active tab is `None`.
+    pub tabs: Vec<Option<crate::tabs::Workspace>>,
+    pub active_tab: usize,
     /// The widget whose look *Copy properties* took.
     pub props_clipboard: Option<Widget>,
     /// When this editor last copied; another editor's later copy wins on paste.
@@ -185,6 +188,8 @@ impl Studio {
             style_slot: "main".to_owned(),
             style_state: StateMask::DEFAULT,
             clipboard: None,
+            tabs: vec![None],
+            active_tab: 0,
             props_clipboard: None,
             clipboard_time: None,
             commands: Vec::new(),
@@ -491,6 +496,11 @@ impl StudioApp {
                 }
             });
         });
+        egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
+            ui.add_space(2.0);
+            crate::tabs::show(ui, &mut self.studio);
+            ui.add_space(2.0);
+        });
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
@@ -702,6 +712,15 @@ impl StudioApp {
         if shortcut(ctrl, Key::E) {
             s.push(Command::ExportLibrary);
         }
+        if shortcut(ctrl, Key::W) {
+            s.push(Command::CloseTab(s.active_tab));
+        }
+        if shortcut(ctrl_shift, Key::Tab) {
+            s.push(Command::SwitchTab((s.active_tab + s.tab_count() - 1) % s.tab_count()));
+        }
+        if shortcut(ctrl, Key::Tab) {
+            s.push(Command::SwitchTab((s.active_tab + 1) % s.tab_count()));
+        }
         if shortcut(ctrl, Key::F) {
             s.search = Some(crate::search_dialog::SearchState::new());
         }
@@ -780,7 +799,7 @@ impl StudioApp {
     }
 
     fn handle_close(&mut self, ctx: &egui::Context) {
-        if ctx.input(|i| i.viewport().close_requested()) && self.studio.doc.is_dirty() && !self.close_confirmed {
+        if ctx.input(|i| i.viewport().close_requested()) && self.studio.any_tab_dirty() && !self.close_confirmed {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
             self.show_close_confirm = true;
         }
@@ -801,9 +820,15 @@ impl StudioApp {
         );
         match choice {
             Some(0) => {
-                self.studio.execute(Command::Save, false);
+                // Save every project with changes, one tab after the other.
+                for tab in 0..self.studio.tab_count() {
+                    if self.studio.tab_dirty(tab) {
+                        self.studio.switch_tab(tab);
+                        self.studio.execute(Command::Save, false);
+                    }
+                }
                 self.show_close_confirm = false;
-                if !self.studio.doc.is_dirty() {
+                if !self.studio.any_tab_dirty() {
                     self.close_confirmed = true;
                     ctx.send_viewport_cmd(ViewportCommand::Close);
                 }
@@ -1088,6 +1113,44 @@ mod tests {
         }
         // LVGL 9 is not rendered by the preview; the editor draws the screen.
         assert_eq!(app.studio.lvgl_preview.error, None);
+    }
+
+    #[test]
+    fn projects_open_in_tabs_that_keep_their_own_state() {
+        crate::sandbox::enable();
+        let dir = std::env::temp_dir().join("lvglab_tabs_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let (first, second) = (dir.join("one.lvglab"), dir.join("two.lvglab"));
+        for (path, name) in [(&first, "One"), (&second, "Two")] {
+            Project::new(name).save(path).unwrap();
+        }
+        let mut studio = Studio::new(AppSettings { tour_done: true, ..AppSettings::default() });
+        studio.execute(Command::OpenPath(first.clone()), false);
+        assert_eq!(studio.tab_count(), 1, "the untouched start project is replaced");
+        studio.execute(Command::OpenPath(second.clone()), false);
+        assert_eq!((studio.tab_count(), studio.active_tab), (2, 1));
+        assert_eq!(studio.doc.project.name, "Two");
+        // Changing the second project does not touch the first.
+        studio.doc.project.name = "Two changed".into();
+        studio.doc.mark_unsaved();
+        studio.execute(Command::SwitchTab(0), false);
+        assert_eq!(studio.doc.project.name, "One");
+        assert!(studio.tab_dirty(1) && !studio.tab_dirty(0));
+        // Opening a project again shows its tab.
+        studio.execute(Command::OpenPath(second.clone()), false);
+        assert_eq!((studio.tab_count(), studio.active_tab), (2, 1));
+        // A project with changes is closed only after asking.
+        studio.execute(Command::CloseTab(1), false);
+        assert!(studio.confirm_discard.is_some() && studio.tab_count() == 2);
+        studio.confirm_discard = None;
+        studio.execute(Command::CloseTab(1), true);
+        assert_eq!((studio.tab_count(), studio.active_tab), (1, 0));
+        assert_eq!(studio.doc.project.name, "One");
+        // The last tab leaves an empty project and the start page.
+        studio.execute(Command::CloseTab(0), false);
+        assert_eq!((studio.tab_count(), studio.doc.project.name.as_str()), (1, "MyProject"));
+        assert!(studio.start_page.is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

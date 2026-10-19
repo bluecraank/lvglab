@@ -23,6 +23,7 @@ mod settings;
 mod simulator;
 mod start;
 mod stats;
+mod tabs;
 mod tour;
 mod visuals;
 mod widgets;
