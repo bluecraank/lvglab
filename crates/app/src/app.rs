@@ -43,6 +43,8 @@ pub struct Studio {
     pub style_slot: String,
     pub style_state: StateMask,
     pub clipboard: Option<Widget>,
+    /// The widget whose look *Copy properties* took.
+    pub props_clipboard: Option<Widget>,
     /// When this editor last copied; another editor's later copy wins on paste.
     pub clipboard_time: Option<std::time::SystemTime>,
     pub commands: Vec<Command>,
@@ -183,6 +185,7 @@ impl Studio {
             style_slot: "main".to_owned(),
             style_state: StateMask::DEFAULT,
             clipboard: None,
+            props_clipboard: None,
             clipboard_time: None,
             commands: Vec::new(),
             status: None,
@@ -597,6 +600,8 @@ impl StudioApp {
             item(ui, tr("Cut"), "Ctrl+X", selected.is_some(), selected.map(Command::Cut));
             item(ui, tr("Copy"), "Ctrl+C", selected.is_some(), selected.map(Command::Copy));
             item(ui, tr("Paste"), "Ctrl+V", true, Some(Command::Paste));
+            item(ui, tr("Copy properties"), "Ctrl+Shift+C", selected.is_some(), selected.map(Command::CopyProps));
+            item(ui, tr("Paste properties"), "Ctrl+Shift+V", true, Some(Command::PasteProps));
             item(ui, tr("Duplicate"), "Ctrl+D", selected.is_some(), selected.map(Command::Duplicate));
             item(ui, tr("Delete"), "Del", selected.is_some(), selected.map(Command::Delete));
             ui.separator();
@@ -718,10 +723,16 @@ impl StudioApp {
         if shortcut(ctrl, Key::Z) {
             s.push(Command::Undo);
         }
+        if shortcut(ctrl_shift, Key::V) {
+            s.push(Command::PasteProps);
+        }
         if shortcut(ctrl, Key::V) {
             s.push(Command::Paste);
         }
         let Some(id) = s.selected else { return };
+        if shortcut(ctrl_shift, Key::C) {
+            s.push(Command::CopyProps(id));
+        }
         if shortcut(ctrl, Key::C) {
             s.push(Command::Copy(id));
         }

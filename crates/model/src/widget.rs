@@ -168,6 +168,31 @@ fn is_zero(v: &i32) -> bool {
 }
 
 impl Widget {
+    /// Takes the look and behavior of `source` (a widget of the same kind):
+    /// properties, flags, states, scrolling, layout, local styles and events.
+    /// Identity, name, position, size, children and the component an
+    /// instance refers to stay as they are.
+    pub fn copy_look_from(&mut self, source: &Widget) -> bool {
+        if self.kind != source.kind {
+            return false;
+        }
+        let component = self.props.get("component").cloned();
+        self.props = source.props.clone();
+        if let Some(component) = component {
+            self.props.insert("component".to_owned(), component);
+        } else {
+            self.props.remove("component");
+        }
+        self.flags = source.flags.clone();
+        self.states = source.states.clone();
+        self.scroll = source.scroll;
+        self.layout = source.layout;
+        self.ext_click_area = source.ext_click_area;
+        self.styles = source.styles.clone();
+        self.events = source.events.clone();
+        true
+    }
+
     /// Creates a widget with the catalog defaults for `kind`.
     pub fn new(kind: WidgetKind, id: WidgetId, name: impl Into<String>) -> Self {
         let def = kind.def();
@@ -310,6 +335,25 @@ mod tests {
         assert_eq!(label.prop_text("text"), "Text");
         assert!(!label.flag(ObjFlag::Clickable));
         assert!(label.prop("unknown").is_none());
+    }
+
+    #[test]
+    fn copying_the_look_keeps_identity_name_and_size() {
+        let mut source = Widget::new(WidgetKind::Label, WidgetId(1), "Source");
+        source.set_prop("text", PropValue::Text("Hello".into()));
+        source.geometry.x = Coord::px(40);
+        source.events.push(crate::event::EventHandler {
+            trigger: crate::event::EventTrigger::Clicked,
+            action: crate::event::Action::CallFunction { name: "go".into() },
+        });
+        let mut target = Widget::new(WidgetKind::Label, WidgetId(2), "Target");
+        assert!(target.copy_look_from(&source));
+        assert_eq!((target.id, target.name.as_str()), (WidgetId(2), "Target"));
+        assert_eq!(target.prop_text("text"), "Hello");
+        assert_eq!(target.events.len(), 1);
+        assert_eq!(target.geometry.x, Coord::px(0), "the position stays");
+        let mut button = Widget::new(WidgetKind::Button, WidgetId(3), "Button");
+        assert!(!button.copy_look_from(&source), "other kinds are refused");
     }
 
     #[test]
