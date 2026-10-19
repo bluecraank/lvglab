@@ -92,6 +92,8 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
   narrow the result (`label title`, `F15C00`, `on_go`). Arrow keys and Enter or a click open the hit.
 - **Autosave** of saved projects (default every 2 minutes, configurable).
 - Layers with drag & drop reordering and reparenting, visibility toggle, filtering and context menu.
+  Ctrl+click adds rows to the selection, Shift+click selects the range up to the clicked row, and dragging a
+  selected row into a container moves the whole selection.
 - Image assets (PNG/JPEG/BMP) and font assets (TTF/OTF) appear in the preview and are converted when
   you export.
 - **Simulator** (F5): play the UI on the canvas. Buttons show their pressed style, switches and check
