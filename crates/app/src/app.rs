@@ -745,20 +745,29 @@ impl StudioApp {
         if shortcut(ctrl, Key::Z) {
             s.push(Command::Undo);
         }
-        if shortcut(ctrl_shift, Key::V) {
+        // The window system turns Ctrl+C, Ctrl+X and Ctrl+V into copy, cut and paste
+        // events instead of key presses.
+        let (copied, cut, pasted, shift) = ctx.input(|i| {
+            let has = |f: fn(&egui::Event) -> bool| i.events.iter().any(f);
+            (
+                has(|e| matches!(e, egui::Event::Copy)),
+                has(|e| matches!(e, egui::Event::Cut)),
+                has(|e| matches!(e, egui::Event::Paste(_))),
+                i.modifiers.shift,
+            )
+        });
+        if shortcut(ctrl_shift, Key::V) || (pasted && shift) {
             s.push(Command::PasteProps);
-        }
-        if shortcut(ctrl, Key::V) {
+        } else if shortcut(ctrl, Key::V) || pasted {
             s.push(Command::Paste);
         }
         let Some(id) = s.selected else { return };
-        if shortcut(ctrl_shift, Key::C) {
+        if shortcut(ctrl_shift, Key::C) || (copied && shift) {
             s.push(Command::CopyProps(id));
-        }
-        if shortcut(ctrl, Key::C) {
+        } else if shortcut(ctrl, Key::C) || copied {
             s.push(Command::Copy(id));
         }
-        if shortcut(ctrl, Key::X) {
+        if shortcut(ctrl, Key::X) || cut {
             s.push(Command::Cut(id));
         }
         if shortcut(ctrl, Key::D) {
@@ -965,6 +974,10 @@ impl StudioApp {
         self.shortcuts(ctx);
 
         for command in std::mem::take(&mut self.studio.commands) {
+            // Paste only reaches the editor when the system clipboard holds some text.
+            if matches!(command, Command::Copy(_) | Command::Cut(_) | Command::CopyProps(_)) {
+                ctx.copy_text("LVGLab".to_owned());
+            }
             self.studio.execute(command, false);
         }
         let s = &mut self.studio;
@@ -1188,6 +1201,40 @@ mod tests {
         assert_eq!(project.screens.len(), 2, "the screen arrived");
         assert!(project.component(&component_name).is_some(), "with its component");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn copy_and_paste_arrive_as_events_and_work() {
+        crate::sandbox::enable();
+        let ctx = egui::Context::default();
+        let frame = |app: &mut StudioApp, event: Option<egui::Event>| {
+            let mut input = egui::RawInput::default();
+            input.events.extend(event);
+            let _ = ctx.run(input, |ctx| app.run_frame_for_test(ctx));
+        };
+        let mut studio = Studio::new(AppSettings { tour_done: true, ..AppSettings::default() });
+        studio.start_page = None;
+        let screen = studio.screen;
+        let button = studio.doc.project.new_widget(lvglab_model::WidgetKind::Button);
+        let id = button.id;
+        studio.doc.project.insert(screen, 0, button).unwrap();
+        studio.select(Some(id));
+        let mut app = StudioApp::for_test(studio);
+        frame(&mut app, None);
+        frame(&mut app, Some(egui::Event::Copy));
+        assert!(app.studio.clipboard.is_some(), "Ctrl+C copies the selected widget");
+        let count = |app: &StudioApp| {
+            let mut n = 0;
+            app.studio.doc.project.widget(screen).unwrap().walk(&mut |_| n += 1);
+            n
+        };
+        let before = count(&app);
+        frame(&mut app, Some(egui::Event::Paste("LVGLab".into())));
+        assert!(count(&app) > before, "Ctrl+V pastes it");
+        // A screen travels as a screen.
+        app.studio.select(Some(screen));
+        frame(&mut app, Some(egui::Event::Copy));
+        assert!(app.studio.screen_clip.is_some() && app.studio.clipboard.is_none());
     }
 
     #[test]
