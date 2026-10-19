@@ -147,21 +147,42 @@ pub fn widget_ref(
 ) -> bool {
     let name = value.and_then(|id| project.widget(id)).map_or_else(|| tr("None").to_owned(), |w| w.name.clone());
     let mut changed = false;
-    egui::ComboBox::from_id_salt(id).selected_text(name).height(320.0).show_ui(ui, |ui| {
-        if ui.selectable_label(value.is_none(), tr("None")).clicked() {
+    let salt = egui::Id::new(id);
+    let filter_id = egui::Id::new(("widget_ref_filter", salt));
+    egui::ComboBox::from_id_salt(salt).selected_text(name).height(320.0).show_ui(ui, |ui| {
+        let mut filter: String = ui.memory(|m| m.data.get_temp(filter_id).unwrap_or_default());
+        let field =
+            ui.add(egui::TextEdit::singleline(&mut filter).hint_text(tr("Search…")).desired_width(f32::INFINITY));
+        if ui.memory(|m| m.focused().is_none()) {
+            field.request_focus();
+        }
+        let needle = filter.trim().to_lowercase();
+        ui.memory_mut(|m| m.data.insert_temp(filter_id, filter));
+        if needle.is_empty() && ui.selectable_label(value.is_none(), tr("None")).clicked() {
             *value = None;
             changed = true;
         }
         for screen in &project.screens {
+            let matching: Vec<(WidgetId, String)> = {
+                let mut found = Vec::new();
+                screen.walk(&mut |w| {
+                    let text = format!("{} {}", w.name, w.def().name).to_lowercase();
+                    if kind.is_none_or(|k| k == w.kind) && text.contains(&needle) {
+                        found.push((w.id, w.name.clone()));
+                    }
+                });
+                found
+            };
+            if matching.is_empty() {
+                continue;
+            }
             ui.label(RichText::new(&screen.name).small().strong());
-            screen.walk(&mut |w| {
-                if kind.is_none_or(|k| k == w.kind)
-                    && ui.selectable_label(*value == Some(w.id), format!("   {}", w.name)).clicked()
-                {
-                    *value = Some(w.id);
+            for (id, name) in matching {
+                if ui.selectable_label(*value == Some(id), format!("   {name}")).clicked() {
+                    *value = Some(id);
                     changed = true;
                 }
-            });
+            }
         }
     });
     changed
