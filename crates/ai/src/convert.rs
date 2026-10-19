@@ -344,6 +344,10 @@ impl Builder<'_> {
             StyleKind::Int { min, max } => {
                 let circle = prop == StyleProp::Radius && text.eq_ignore_ascii_case("circle");
                 let parsed = if circle { Some(lvglab_model::theme::RADIUS_CIRCLE) } else { text.parse::<i32>().ok() };
+                // A huge radius means "as round as possible": keep it exact.
+                let parsed = parsed.map(|v| {
+                    if prop == StyleProp::Radius && v >= 1000 { lvglab_model::theme::RADIUS_CIRCLE } else { v }
+                });
                 parsed.map(|v| StyleValue::Int(v.clamp(min, max)))
             }
             StyleKind::Opa => parse_opa(text).map(StyleValue::Int),

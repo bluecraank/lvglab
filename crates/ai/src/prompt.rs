@@ -37,7 +37,7 @@ so include all widgets that should remain. New names create new screens. Do not 
 `property` (a style property below) and `value`.\n\
 - `events`: `change_screen` with the screen name as target, or `call_function` with a C function name.\n\n\
 Value formats: colors `#RRGGBB`; opacity 0-255 or `50%`; booleans `true`/`false`; pairs `min,max`; dates `YYYY-MM-DD`; \
-line breaks in texts as \\n; enumerations as listed. Radius `circle` makes pill shapes.\n",
+line breaks in texts as \\n; enumerations as listed. Radius: use pixel values such as 8 to 30 for rounded corners; `circle` (the maximum, 32767) only for round shapes such as circles and pills.\n",
     );
     let _ = writeln!(
         out,
