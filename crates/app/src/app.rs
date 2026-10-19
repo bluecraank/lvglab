@@ -332,6 +332,8 @@ pub struct StudioApp {
     show_close_confirm: bool,
     title: String,
     last_autosave: f64,
+    /// The selection of the last frame; text fields forget their undo history when it changes.
+    last_selection: Option<WidgetId>,
 }
 
 impl StudioApp {
@@ -429,6 +431,7 @@ impl StudioApp {
             show_close_confirm: dialog == Some("close"),
             title: String::new(),
             last_autosave: 0.0,
+            last_selection: None,
         }
     }
 
@@ -906,6 +909,7 @@ impl StudioApp {
             show_close_confirm: false,
             title: String::new(),
             last_autosave: 0.0,
+            last_selection: None,
         }
     }
 
@@ -923,6 +927,11 @@ impl StudioApp {
     fn run_frame(&mut self, ctx: &egui::Context) {
         self.frame += 1;
         self.studio.anchors.clear();
+        // Ctrl+Z in a text field must not bring back what another widget's field held.
+        if self.last_selection != self.studio.selected {
+            self.last_selection = self.studio.selected;
+            ctx.memory_mut(|m| m.data.remove_by_type::<egui::text_edit::TextEditState>());
+        }
         self.apply_settings(ctx);
         self.studio.poll_assistant();
         let dir = self.studio.doc.dir().map(std::path::Path::to_path_buf);
