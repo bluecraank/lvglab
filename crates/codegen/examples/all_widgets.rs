@@ -117,7 +117,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for warning in &output.warnings {
         eprintln!("warning: {warning}");
     }
-    project.save(&std::path::Path::new(&out).join("all.lvglab"))?;
+    // For trying the project in the editor: LVGLAB_SAVE_PROJECT=1
+    if std::env::var_os("LVGLAB_SAVE_PROJECT").is_some() {
+        std::fs::create_dir_all(&out)?;
+        project.save(&std::path::Path::new(&out).join("all.lvglab"))?;
+    }
     lvglab_codegen::write(std::path::Path::new(&out), &output, &["src"])?;
     Ok(())
 }
