@@ -57,6 +57,8 @@ pub enum Command {
     ExportScreenshots,
     /// Opens the search window.
     Find,
+    SwitchTab(usize),
+    CloseTab(usize),
     /// Remembers the look of a widget (properties, styles, events).
     CopyProps(WidgetId),
     /// Gives it to the selected widgets of the same kind.
@@ -105,25 +107,15 @@ pub enum Command {
     },
 }
 
-impl Command {
-    /// Commands that replace the document ask before discarding changes.
-    fn replaces_document(&self) -> bool {
-        matches!(
-            self,
-            Self::CreateProject(_)
-                | Self::Open
-                | Self::OpenPath(_)
-                | Self::ImportSquareLine
-                | Self::ImportSquareLinePath(_)
-        )
-    }
-}
-
 impl Studio {
     pub fn execute(&mut self, command: Command, confirmed: bool) {
-        if command.replaces_document() && self.doc.is_dirty() && !confirmed {
-            self.confirm_discard = Some(command);
-            return;
+        // A project with unsaved changes is closed only after asking.
+        if let Command::CloseTab(index) = command {
+            if !confirmed && self.tab_dirty(index) {
+                self.switch_tab(index);
+                self.confirm_discard = Some(command);
+                return;
+            }
         }
         match command {
             Command::NewProject => self.new_project = Some(NewProject::from_defaults(&self.settings.new_project)),
@@ -135,6 +127,8 @@ impl Studio {
                 }
             }
             Command::PasteProps => self.paste_props(),
+            Command::SwitchTab(index) => self.switch_tab(index),
+            Command::CloseTab(index) => self.close_tab(index),
             Command::Find => self.search = Some(crate::search_dialog::SearchState::new()),
             Command::ExportScreenshots => {
                 let project_dir = self.doc.dir().map(Path::to_path_buf);
@@ -273,17 +267,19 @@ impl Studio {
     fn load_document(&mut self, doc: Document, label: &str) {
         // A project was opened or created, so the start page has done its job.
         self.return_to_start = false;
-        self.timeline = Timeline::new(&doc.project, label);
-        self.doc = doc;
-        self.selected = None;
-        self.screen = self.doc.project.screens.first().map_or(WidgetId(0), |s| s.id);
-        self.canvas.fit_pending = true;
+        let timeline = Timeline::new(&doc.project, label);
+        self.open_in_tab(doc, timeline);
     }
 
     fn open(&mut self, path: PathBuf) {
         let is_squareline = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("spj"));
         if is_squareline {
             self.import_squareline(path);
+            return;
+        }
+        // A project that is open already is shown instead of opened twice.
+        if let Some(tab) = self.tab_of(&path) {
+            self.switch_tab(tab);
             return;
         }
         match Project::load(&path) {
