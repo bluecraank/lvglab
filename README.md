@@ -80,7 +80,7 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
   round display masking, zoom, pan, grid and snapping.
 - **Tabs**: several projects can be open at once. *Open*, *New* and *Import* add a tab (an untouched new project is replaced); each tab keeps its own history, selection and view. Ctrl+Tab / Ctrl+Shift+Tab switch, Ctrl+W or the ✕ closes a tab (after asking if it has unsaved changes), **+** opens the start page. Copy and paste between the tabs works as usual.
 - **Copy properties / Paste properties** (Edit menu, layers context menu, Ctrl+Shift+C / Ctrl+Shift+V): the properties, local styles, flags and events of a widget go to all selected widgets of the same type. Name, position, size and children stay; component instances keep their component.
-- Copy and paste also work between two running LVGLab windows (the copied widget travels through a file in the temporary folder). Components, fonts, images and event targets of the source project are not copied; use *File → Merge project…* for whole screens.
+- Copy and paste also work between tabs and between two running LVGLab windows (the copy travels through a file in the temporary folder). A copied **screen** takes the components, fonts, images and theme colors it uses along; if names already exist in the target project, the merge wizard asks how to resolve them. For other widgets, components, fonts and images of the source project are not copied.
 - Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
 - Align and distribute the selection (or one widget in its parent); snap lines to the edges and centers of neighbors.
   Drag widgets from the palette onto the canvas.

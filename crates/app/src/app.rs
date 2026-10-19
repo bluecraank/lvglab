@@ -43,6 +43,8 @@ pub struct Studio {
     pub style_slot: String,
     pub style_state: StateMask,
     pub clipboard: Option<Widget>,
+    /// A copied screen with what it needs (components, fonts, images).
+    pub screen_clip: Option<crate::commands::ScreenClip>,
     /// The parked projects of the tabs; the entry of the active tab is `None`.
     pub tabs: Vec<Option<crate::tabs::Workspace>>,
     pub active_tab: usize,
@@ -188,6 +190,7 @@ impl Studio {
             style_slot: "main".to_owned(),
             style_state: StateMask::DEFAULT,
             clipboard: None,
+            screen_clip: None,
             tabs: vec![None],
             active_tab: 0,
             props_clipboard: None,
@@ -1150,6 +1153,40 @@ mod tests {
         studio.execute(Command::CloseTab(0), false);
         assert_eq!((studio.tab_count(), studio.doc.project.name.as_str()), (1, "MyProject"));
         assert!(studio.start_page.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_copied_screen_can_be_pasted_into_another_project_with_its_components() {
+        crate::sandbox::enable();
+        let dir = std::env::temp_dir().join("lvglab_screen_clip_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let (first, second) = (dir.join("a.lvglab"), dir.join("b.lvglab"));
+        let mut a = Project::new("A");
+        let screen = a.screens[0].id;
+        a.widget_mut(screen).unwrap().name = "Dash".into();
+        let component = a.add_component();
+        let component_name = a.widget(component).unwrap().name.clone();
+        let mut instance = a.new_widget(lvglab_model::WidgetKind::Component);
+        instance.name = "Gauge".into();
+        instance.set_prop("component", lvglab_model::prop::PropValue::Text(component_name.clone()));
+        a.insert(screen, 0, instance).unwrap();
+        a.save(&first).unwrap();
+        Project::new("B").save(&second).unwrap();
+
+        let mut studio = Studio::new(AppSettings { tour_done: true, ..AppSettings::default() });
+        studio.execute(Command::OpenPath(first), false);
+        studio.execute(Command::OpenPath(second), false);
+        assert_eq!(studio.tab_count(), 2);
+        studio.execute(Command::SwitchTab(0), false);
+        studio.execute(Command::Copy(screen), false);
+        studio.execute(Command::SwitchTab(1), false);
+        assert_eq!((studio.doc.project.screens.len(), studio.doc.project.components.len()), (1, 0));
+        studio.execute(Command::Paste, false);
+        assert!(studio.merge.is_none(), "no name clashes, so nothing to ask");
+        let project = &studio.doc.project;
+        assert_eq!(project.screens.len(), 2, "the screen arrived");
+        assert!(project.component(&component_name).is_some(), "with its component");
         let _ = std::fs::remove_dir_all(dir);
     }
 
