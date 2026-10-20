@@ -493,7 +493,7 @@ fn simulate(
     if let Some(recorder) = &mut studio.recorder {
         recorder.request(ui.ctx(), now, display.intersect(rect), display_size);
         let seconds = recorder.seconds(now);
-        let label = format!("⏺ REC {}:{:02}", seconds as u32 / 60, seconds as u32 % 60);
+        let label = format!("\u{E3EE} REC {}:{:02}", seconds as u32 / 60, seconds as u32 % 60);
         painter.text(
             rect.left_top() + vec2(10.0, 8.0),
             egui::Align2::LEFT_TOP,
@@ -851,7 +851,8 @@ fn ring(center: Pos2, inner: f32, outer: f32, color: Color32) -> egui::Shape {
 
 fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
     let running = studio.simulation.is_some();
-    let (text, color) = if running { ("■", visuals::DANGER) } else { ("▶", visuals::SUCCESS) };
+    let (text, color) =
+        if running { (crate::icons::STOP, visuals::DANGER) } else { (crate::icons::PLAY, visuals::SUCCESS) };
     let label = if running { tr("Stop") } else { tr("Simulate") };
     let hint = if running {
         tr("Stop the simulation (F5 or Esc)")
@@ -865,7 +866,7 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
         studio.toggle_simulation();
     }
     let Some(sim) = &mut studio.simulation else { return };
-    ui.toggle_value(&mut sim.record, format!("⏺ {}", tr("Record")))
+    ui.toggle_value(&mut sim.record, format!("\u{E3EE} {}", tr("Record")))
         .on_hover_text(tr("Shows the pointer and every click, for screen recordings"));
     if sim.has_live_values() {
         egui::ComboBox::from_id_salt("sim_live")
@@ -878,7 +879,11 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
             .response
             .on_hover_text(tr("Moves arcs, bars, sliders, meters and numeric labels; Maximum shows the widest values"));
     }
-    if ui.button("↺").on_hover_text(tr("Restart the simulation with the current project")).clicked() {
+    if ui
+        .button(crate::icons::ARROWS_CLOCKWISE)
+        .on_hover_text(tr("Restart the simulation with the current project"))
+        .clicked()
+    {
         let screen = sim.screen;
         let record = sim.record;
         let mut fresh = crate::simulator::Simulation::new(&studio.doc.project, screen);
@@ -889,8 +894,8 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
     match &studio.recorder {
         Some(recorder) => {
             let seconds = recorder.seconds(now) as u32;
-            let text =
-                egui::RichText::new(format!("■ GIF {}:{:02}", seconds / 60, seconds % 60)).color(visuals::DANGER);
+            let text = egui::RichText::new(format!("\u{E46C} GIF {}:{:02}", seconds / 60, seconds % 60))
+                .color(visuals::DANGER);
             if ui.button(text).on_hover_text(tr("Stop and save the recording")).clicked() {
                 studio.stop_recording();
             }
@@ -898,7 +903,7 @@ fn simulation_controls(ui: &mut egui::Ui, studio: &mut Studio) {
         None => {
             let hint =
                 trf("Records the display as an animated GIF (up to {} s)", &[&(crate::recorder::MAX_SECONDS as u32)]);
-            if ui.button("⏺ GIF").on_hover_text(hint).clicked() {
+            if ui.button("\u{E3EE} GIF").on_hover_text(hint).clicked() {
                 studio.start_recording(now);
             }
         }
@@ -948,9 +953,10 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
         let current = studio.doc.project.widget(shown).map(|s| s.name.clone()).unwrap_or_default();
         let screens: Vec<(WidgetId, String)> =
             studio.doc.project.screens.iter().map(|s| (s.id, s.name.clone())).collect();
-        egui::ComboBox::from_id_salt("canvas_screen").selected_text(format!("▣ {current}")).width(150.0).show_ui(
-            ui,
-            |ui| {
+        egui::ComboBox::from_id_salt("canvas_screen")
+            .selected_text(format!("\u{E32E} {current}"))
+            .width(150.0)
+            .show_ui(ui, |ui| {
                 for (id, name) in screens {
                     if ui.selectable_label(shown == id, name).clicked() {
                         match &mut studio.simulation {
@@ -959,8 +965,7 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
                         }
                     }
                 }
-            },
-        );
+            });
         if studio.simulation.is_none() && ui.button("+").on_hover_text(tr("Add screen")).clicked() {
             studio.push(crate::commands::Command::AddScreen);
         }
@@ -998,7 +1003,7 @@ fn toolbar(ui: &mut egui::Ui, studio: &mut Studio) {
         ui.toggle_value(&mut s.show_hidden, tr("Hidden")).on_hover_text(tr("Outline hidden widgets in orange"));
         if studio.simulation.is_none()
             && ui
-                .button("🎲")
+                .button(crate::icons::DICE_FIVE)
                 .on_hover_text(tr("Random values for all widgets of this screen (Shift: all screens)"))
                 .clicked()
         {

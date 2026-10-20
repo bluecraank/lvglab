@@ -82,7 +82,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
                     if value_editor(ui, project, *prop, &mut value) {
                         widget.styles.set(&slot, state, *prop, value);
                     }
-                    if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
+                    if ui.small_button(crate::icons::X).on_hover_text(tr("Remove")).clicked() {
                         remove.push(*prop);
                     }
                     ui.end_row();
@@ -242,7 +242,9 @@ fn plain_value_editor(ui: &mut egui::Ui, project: &Project, prop: StyleProp, val
                 if prop == StyleProp::Radius && *v >= lvglab_model::theme::RADIUS_CIRCLE { tr("circle") } else { "" };
             ui.horizontal(|ui| {
                 let changed = ui.add(egui::DragValue::new(v).range(min..=max)).changed();
-                if prop == StyleProp::Radius && ui.small_button("○").on_hover_text("LV_RADIUS_CIRCLE").clicked() {
+                if prop == StyleProp::Radius
+                    && ui.small_button(crate::icons::CIRCLE).on_hover_text("LV_RADIUS_CIRCLE").clicked()
+                {
                     *v = lvglab_model::theme::RADIUS_CIRCLE;
                     return true;
                 }

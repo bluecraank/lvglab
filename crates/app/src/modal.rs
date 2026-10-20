@@ -27,9 +27,9 @@ impl Tone {
 
     fn glyph(self) -> &'static str {
         match self {
-            Self::Info => "i",
-            Self::Success => "✔",
-            Self::Warning | Self::Danger => "!",
+            Self::Info => crate::icons::INFO,
+            Self::Success => crate::icons::CHECK,
+            Self::Warning | Self::Danger => crate::icons::WARNING,
         }
     }
 }

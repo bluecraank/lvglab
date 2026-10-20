@@ -92,7 +92,7 @@ fn selection_header(ui: &mut egui::Ui, studio: &Studio) -> bool {
     match studio.selected_widget() {
         Some(widget) => {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(widget.def().icon).size(16.0));
+                ui.label(egui::RichText::new(crate::icons::widget(widget.kind)).size(16.0));
                 ui.label(egui::RichText::new(&widget.name).strong());
                 crate::widgets::muted(ui, crate::i18n::tr(widget.def().name));
             });

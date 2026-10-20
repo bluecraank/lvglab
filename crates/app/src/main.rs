@@ -9,6 +9,7 @@ mod commands;
 mod dialogs;
 mod document;
 mod i18n;
+mod icons;
 mod lvgl_preview;
 mod merge_dialog;
 mod modal;

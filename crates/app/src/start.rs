@@ -90,9 +90,9 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
                         chosen = Some(command);
                     }
                 };
-                action(ui, "➕", tr("New project…"), Command::NewProject);
-                action(ui, "📂", tr("Open…"), Command::Open);
-                action(ui, "⬇", tr("Import SquareLine project…"), Command::ImportSquareLine);
+                action(ui, crate::icons::PLUS, tr("New project…"), Command::NewProject);
+                action(ui, crate::icons::FOLDER_OPEN, tr("Open…"), Command::Open);
+                action(ui, crate::icons::DOWNLOAD_SIMPLE, tr("Import SquareLine project…"), Command::ImportSquareLine);
             });
             ui.add_space(24.0);
             // Recent projects.

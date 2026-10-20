@@ -883,6 +883,7 @@
   "{} min ago": "il y a {} min",
   "{} needs a parent of type {}.": "{} nécessite un parent de type {}.",
   "{} notes": "{} remarques",
+  "{} objects on the top level; an instance uses only the first.": "{} objets au niveau supérieur ; une instance n'utilise que le premier.",
   "{} references pointed at widgets that were not taken over and were cleared (events, keyboard targets).": "{} références pointaient vers des widgets non repris et ont été vidées (événements, cibles du clavier).",
   "{} results": "{} résultats",
   "{} s ago": "il y a {} s",
@@ -898,6 +899,5 @@
   "{}: style {} removed": "{} : style {} supprimé",
   "{}: styles of the part {} removed": "{} : styles de la partie {} supprimés",
   "{}: widget removed ({})": "{} : widget supprimé ({})",
-  "{}: {} reset": "{} : {} réinitialisé",
-  "⚠ {} objects on the top level; an instance uses only the first.": "⚠ {} objets au niveau supérieur ; une instance n'utilise que le premier."
+  "{}: {} reset": "{} : {} réinitialisé"
 }

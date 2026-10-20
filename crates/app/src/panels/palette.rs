@@ -58,7 +58,7 @@ fn tile(ui: &mut egui::Ui, studio: &mut Studio, def: &'static WidgetDef) {
     ui.painter().text(
         rect.center_top() + egui::vec2(0.0, 20.0),
         egui::Align2::CENTER_CENTER,
-        def.icon,
+        crate::icons::widget(def.kind),
         egui::FontId::proportional(20.0),
         text_color,
     );

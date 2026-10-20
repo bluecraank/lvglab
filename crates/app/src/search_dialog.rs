@@ -112,9 +112,9 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
                         if selected { ACCENT } else { ui.visuals().strong_text_color() },
                     );
                     let place = if hit.is_component {
-                        format!("📦 {}", hit.root_name)
+                        format!("\u{E390} {}", hit.root_name)
                     } else {
-                        format!("▣ {}", hit.root_name)
+                        format!("\u{E32E} {}", hit.root_name)
                     };
                     painter.text(
                         inner.right_top(),

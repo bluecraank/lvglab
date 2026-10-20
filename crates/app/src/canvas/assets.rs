@@ -3,9 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{
-    self, ColorImage, FontData, FontDefinitions, FontFamily, FontId, FontTweak, TextureHandle, TextureOptions,
-};
+use eframe::egui::{self, ColorImage, FontData, FontFamily, FontId, FontTweak, TextureHandle, TextureOptions};
 use lvglab_model::Project;
 use lvglab_model::style::{builtin_font_line_height, builtin_font_size};
 
@@ -179,7 +177,7 @@ impl FontManager {
         if !added {
             return;
         }
-        let mut definitions = FontDefinitions::default();
+        let mut definitions = crate::icons::fonts();
         let fallback = definitions.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
         let mut families = HashSet::new();
         for font in self.loaded.values() {

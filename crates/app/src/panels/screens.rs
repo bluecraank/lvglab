@@ -27,7 +27,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
         let current = studio.screen == id;
         let response = ui
             .horizontal(|ui| {
-                let label = ui.selectable_label(current, RichText::new(format!("▣  {name}")).strong());
+                let label = ui.selectable_label(current, RichText::new(format!("\u{E32E}  {name}")).strong());
                 muted(ui, trf("{} widgets", &[&widgets]));
                 if index == 0 {
                     muted(ui, tr("start"));
@@ -90,7 +90,7 @@ fn components(ui: &mut egui::Ui, studio: &mut Studio) {
         let current = studio.screen == id;
         let response = ui
             .horizontal(|ui| {
-                let label = ui.selectable_label(current, RichText::new(format!("📦  {name}")).strong());
+                let label = ui.selectable_label(current, RichText::new(format!("\u{E390}  {name}")).strong());
                 muted(ui, trf("{} widgets", &[&widgets.saturating_sub(1)]));
                 label
             })
@@ -100,7 +100,8 @@ fn components(ui: &mut egui::Ui, studio: &mut Studio) {
         }
         if roots > 1 {
             ui.horizontal_wrapped(|ui| {
-                let warning = trf("⚠ {} objects on the top level; an instance uses only the first.", &[&roots]);
+                let text = trf("{} objects on the top level; an instance uses only the first.", &[&roots]);
+                let warning = format!("{} {text}", crate::icons::WARNING);
                 ui.colored_label(crate::visuals::WARNING, warning);
                 if ui.small_button(tr("Group them")).on_hover_text(tr("Put all objects into one container")).clicked() {
                     studio.push(Command::GroupComponent(id));
