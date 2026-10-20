@@ -5,6 +5,7 @@
 
 mod assets;
 mod ffi;
+mod fonts;
 mod interp;
 
 use std::path::Path;
@@ -78,6 +79,21 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
         for image in &mut images {
             let address = image.address();
             interpreter.add_symbol(&image.name, address);
+        }
+        let font_sources: Vec<&str> = output
+            .files
+            .iter()
+            .filter(|f| f.path.rsplit('/').next().is_some_and(|n| n.starts_with("ui_font_") && n.ends_with(".c")))
+            .map(lvglab_codegen::GeneratedFile::contents_str)
+            .collect();
+        let mut fonts = fonts::parse_fonts(&font_sources);
+        if let (Some(glyph_dsc), Some(glyph_bitmap)) =
+            (interpreter.symbol("lv_font_get_glyph_dsc_fmt_txt"), interpreter.symbol("lv_font_get_bitmap_fmt_txt"))
+        {
+            for font in &mut fonts {
+                let address = font.address(glyph_dsc, glyph_bitmap);
+                interpreter.add_symbol(&font.name, address);
+            }
         }
         interpreter.only_screen = Some(screen_init);
         interpreter.call("ui_init", &[]);
@@ -185,5 +201,39 @@ mod tests {
         let frame = render_screen(&p, 0, None).expect("rendered");
         let i = (80 * 200 + 20) * 4;
         assert_eq!(&frame.rgba[i..i + 3], &[0, 255, 0], "the component is green; skipped: {:?}", frame.skipped);
+    }
+
+    /// With `LVGLAB_TEST_FONT=<a TTF file>` a label in a custom font is drawn.
+    #[test]
+    fn a_custom_font_draws_text() {
+        let Some(font_path) = std::env::var_os("LVGLAB_TEST_FONT") else { return };
+        let mut p = project();
+        p.assets.fonts.push(lvglab_model::project::FontAsset {
+            name: "Test24".into(),
+            path: font_path.to_string_lossy().into_owned(),
+            size: 24,
+            ..Default::default()
+        });
+        let screen = p.screens[0].id;
+        let mut label = p.new_widget(WidgetKind::Label);
+        label.set_prop("text", lvglab_model::prop::PropValue::Text("Grüße 123".into()));
+        label.geometry.align = Align::TopLeft;
+        label.geometry.x = Coord::px(10);
+        label.geometry.y = Coord::px(65);
+        label.styles.set("main", StateMask::DEFAULT, StyleProp::TextFont, StyleValue::Font("Test24".into()));
+        label.styles.set(
+            "main",
+            StateMask::DEFAULT,
+            StyleProp::TextColor,
+            StyleValue::Color(Color::from_hex(0xFFFFFF)),
+        );
+        p.insert(screen, 1, label).unwrap();
+        if let Some(out) = std::env::var_os("LVGLAB_TEST_SAVE") {
+            p.save(std::path::Path::new(&out)).unwrap();
+        }
+        let frame = render_screen(&p, 0, None).expect("rendered");
+        let lit = frame.rgba.chunks_exact(4).enumerate().filter(|(i, px)| i / 200 >= 62 && px[0] > 128).count();
+        assert!(!frame.skipped.iter().any(|l| l.contains("ui_font")), "{:?}", frame.skipped);
+        assert!(lit > 50, "the text is drawn ({lit} bright pixels); skipped: {:?}", frame.skipped);
     }
 }
