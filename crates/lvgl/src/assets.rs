@@ -3,6 +3,7 @@
 //! is expanded into `LV_IMG_CF_TRUE_COLOR[_ALPHA]` descriptors of that format.
 
 /// An image in the 32 bit format of the preview, with its `lv_img_dsc_t`.
+#[derive(Clone)]
 pub struct Image {
     pub name: String,
     /// `lv_img_dsc_t`: header (4 bytes), data size (4), data pointer (8).

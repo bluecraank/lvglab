@@ -59,6 +59,30 @@ pub fn write(root: &Path, output: &Output, managed_dirs: &[&str]) -> io::Result<
     output::write_all(root, &output.files, managed_dirs)
 }
 
+/// Converted images and fonts by everything that goes into them (file, its
+/// modification time, settings, names). Rendering a TrueType font or
+/// converting an image takes far longer than generating the rest of the UI,
+/// and the preview generates the UI on every change.
+static CONVERTED: std::sync::Mutex<Option<std::collections::HashMap<String, Result<String, String>>>> =
+    std::sync::Mutex::new(None);
+
+fn converted(key: String, path: &Path, convert: impl FnOnce() -> Result<String, String>) -> Result<String, String> {
+    let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let key = format!("{key}|{}|{modified:?}", path.display());
+    if let Some(hit) = CONVERTED.lock().ok().and_then(|c| c.as_ref().and_then(|c| c.get(&key).cloned())) {
+        return hit;
+    }
+    let result = convert();
+    if let Ok(mut cache) = CONVERTED.lock() {
+        let cache = cache.get_or_insert_with(Default::default);
+        if cache.len() > 256 {
+            cache.clear();
+        }
+        cache.insert(key, result.clone());
+    }
+    result
+}
+
 fn build_ui(project: &Project, project_dir: Option<&Path>) -> Output {
     let header = ui::header(project);
     let names = naming::Naming::new(project);
@@ -72,22 +96,43 @@ fn build_ui(project: &Project, project_dir: Option<&Path>) -> Output {
 
     for asset in &project.assets.images {
         let path = Project::resolve_path(project_dir, &asset.path);
-        let converted = image::load(&path, swap).unwrap_or_else(|err| {
-            warnings.push(format!("{err}; a transparent placeholder is used"));
-            image::placeholder()
-        });
         let symbol = names.image(&asset.name);
-        files.push(GeneratedFile::text(
-            format!("{symbol}.c"),
-            image::to_c(&asset.name, &symbol, &converted, &header, &include, target),
-            WritePolicy::Overwrite,
-        ));
+        let key = format!("image|{}|{symbol}|{swap}|{target:?}|{header}|{include}", asset.name);
+        let code = converted(key, &path, || {
+            let (image, warning) = match image::load(&path, swap) {
+                Ok(image) => (image, None),
+                Err(err) => (image::placeholder(), Some(format!("{err}; a transparent placeholder is used"))),
+            };
+            let code = image::to_c(&asset.name, &symbol, &image, &header, &include, target);
+            // A failed load is remembered as an error that still carries the placeholder.
+            match warning {
+                None => Ok(code),
+                Some(warning) => Err(format!("{warning}\u{0}{code}")),
+            }
+        });
+        let code = match code {
+            Ok(code) => code,
+            Err(both) => {
+                let (warning, code) = both.split_once('\u{0}').unwrap_or((both.as_str(), ""));
+                warnings.push(warning.to_owned());
+                code.to_owned()
+            }
+        };
+        files.push(GeneratedFile::text(format!("{symbol}.c"), code, WritePolicy::Overwrite));
         decls.images.push((symbol, asset.path.clone()));
     }
 
     for asset in &project.assets.fonts {
         let symbol = names.font(&asset.name);
-        match font::convert(asset, project_dir, &symbol, &header, &include) {
+        let path = Project::resolve_path(project_dir, &asset.path);
+        let key = format!(
+            "font|{}|{}|{}|{}|{}|{symbol}|{header}|{include}",
+            asset.name, asset.size, asset.bpp, asset.ranges, asset.symbols
+        );
+        let result = converted(key, &path, || {
+            font::convert(asset, project_dir, &symbol, &header, &include).map_err(|e| e.to_string())
+        });
+        match result {
             Ok(code) => {
                 files.push(GeneratedFile::text(format!("{symbol}.c"), code, WritePolicy::Overwrite));
                 decls.fonts.push(symbol);
