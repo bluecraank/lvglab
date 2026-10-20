@@ -206,11 +206,14 @@ fn project_settings(ctx: &egui::Context, studio: &mut Studio) {
 
 fn preferences(ctx: &egui::Context, studio: &mut Studio) {
     let mut open = studio.show_preferences;
-    egui::Window::new(tr("Preferences")).open(&mut open).resizable(false).collapsible(false).default_width(460.0).show(
+    let max_height = (ctx.screen_rect().height() - 140.0).max(300.0);
+    egui::Window::new(tr("Preferences")).open(&mut open).resizable(false).collapsible(false).min_width(960.0).show(
         ctx,
         |ui| {
             let s = &mut studio.settings;
-            section(ui, "prefs_general", tr("General"), true, |ui| {
+            egui::ScrollArea::vertical().max_height(max_height).show(ui, |ui| {
+            ui.columns(2, |cols| {
+            card(&mut cols[0], "⚙", tr("General"), |ui| {
                 grid(ui, "prefs_general_grid", |ui| {
                     label(ui, tr("Language"), "");
                     ui.horizontal(|ui| {
@@ -255,7 +258,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     ui.end_row();
                 });
             });
-            section(ui, "prefs_canvas", tr("Canvas"), true, |ui| {
+            card(&mut cols[0], "🎨", tr("Canvas"), |ui| {
                 grid(ui, "prefs_canvas_grid", |ui| {
                     label(ui, tr("Background"), "");
                     widgets::choice(
@@ -300,7 +303,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     ui.end_row();
                 });
             });
-            section(ui, "prefs_editing", tr("Editing"), true, |ui| {
+            card(&mut cols[1], "✏", tr("Editing"), |ui| {
                 grid(ui, "prefs_editing_grid", |ui| {
                     label(ui, tr("Timeline length"), tr("Older steps are dropped."));
                     ui.add(egui::DragValue::new(&mut s.history_limit).range(20..=5000).suffix(tr(" steps")));
@@ -328,7 +331,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     ui.end_row();
                 });
             });
-            section(ui, "prefs_ai", tr("AI assistant"), true, |ui| {
+            card(&mut cols[1], "💬", tr("AI assistant"), |ui| {
                 grid(ui, "prefs_ai_grid", |ui| {
                     label(ui, tr("API key"), tr("Anthropic API key. Stored in the editor settings on this computer."));
                     ui.horizontal(|ui| {
@@ -358,8 +361,10 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                 }
                 muted(ui, tr("Requests are billed to your Anthropic account. The project description is sent with each request."));
             });
-            section(ui, "prefs_export", tr("Export"), true, |ui| {
+            card(&mut cols[1], "📤", tr("Export"), |ui| {
                 ui.checkbox(&mut s.open_export_folder, tr("Open the folder after exporting"));
+            });
+            });
             });
             ui.separator();
             ui.horizontal_wrapped(|ui| {
@@ -379,6 +384,26 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
         },
     );
     studio.show_preferences = open;
+}
+
+/// A category of the preferences: a framed card with a highlighted title.
+fn card(ui: &mut egui::Ui, icon: &str, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::group(ui.style())
+        .fill(ui.visuals().faint_bg_color)
+        .corner_radius(10)
+        .inner_margin(egui::Margin::same(14))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(icon).size(18.0).color(visuals::ACCENT));
+                ui.label(egui::RichText::new(title).size(17.0).strong().color(visuals::ACCENT));
+            });
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(6.0);
+            add(ui);
+        });
+    ui.add_space(10.0);
 }
 
 fn about(ctx: &egui::Context, studio: &mut Studio) {
