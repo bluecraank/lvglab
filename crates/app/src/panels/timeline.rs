@@ -34,6 +34,15 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     ui.add_space(4.0);
     let muted = visuals::palette(ui.ctx()).muted;
     let scroll_to_current = ui.memory(|m| m.data.get_temp::<usize>(ui.id()).is_none_or(|last| last != count));
+    // The mouse wheel scrolls the steps sideways.
+    if ui.rect_contains_pointer(ui.available_rect_before_wrap()) {
+        ui.ctx().input_mut(|i| {
+            let delta = i.smooth_scroll_delta;
+            if delta.x == 0.0 && delta.y != 0.0 {
+                i.smooth_scroll_delta = vec2(delta.y, 0.0);
+            }
+        });
+    }
     egui::ScrollArea::horizontal().auto_shrink([false, true]).stick_to_right(true).show(ui, |ui| {
         ui.horizontal(|ui| {
             let screen = studio.screen;
