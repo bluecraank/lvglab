@@ -1076,6 +1076,8 @@ fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
     style.tab.focused.text_color = ctx.style().visuals.strong_text_color();
     style.tab.hline_below_active_tab_name = true;
     style.overlay.selection_color = visuals::ACCENT.gamma_multiply(0.4);
+    // Panels may be dragged down to a tab bar and a row (egui_dock keeps 175 px by default).
+    style.separator.extra = 70.0;
     style
 }
 
@@ -1093,7 +1095,7 @@ pub fn default_layout() -> DockState<Panel> {
     let [center, left] = tree.split_left(center, 0.24, vec![Panel::Screens]);
     let [_, layers] = tree.split_below(left, 0.22, vec![Panel::Layers]);
     tree.split_below(layers, 0.5, vec![Panel::Widgets]);
-    tree.split_below(center, 0.82, vec![Panel::Timeline]);
+    tree.split_below(center, 0.85, vec![Panel::Timeline]);
     tree.split_below(right, 0.66, vec![Panel::Fonts, Panel::Images]);
     dock
 }
