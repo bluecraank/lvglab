@@ -84,7 +84,7 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - Click to select, Ctrl+click to select several. Drag to move and use the handles to resize. Arrow keys nudge by 1 px (10 px with Shift).
 - Align and distribute the selection (or one widget in its parent); snap lines to the edges and centers of neighbors.
   Drag widgets from the palette onto the canvas.
-- Freely dockable panels: Screens, Layers, Widgets, Parameters, Themes, Style, Events, Timeline, Fonts and Images.
+- Freely dockable panels: Screens, Layers, Widgets, Parameters, Themes, Style, Events, Timeline, Fonts and Assets (images). Timeline, Fonts and Assets share the area below the canvas.
   Snap them anywhere, stack them as tabs or float them as windows. The layout is remembered.
 - **Timeline**: every change becomes a named step. Click any step to jump back or forward
   (Ctrl+Z / Ctrl+Y move one step). Saves and autosaves appear as highlighted green steps.
@@ -313,7 +313,7 @@ What is imported:
 Things to know:
 
 - Asset paths point to the original files of the SquareLine project. Keep that folder, or replace
-  the files in the **Fonts** / **Images** panels.
+  the files in the **Fonts** / **Assets** panels.
 - A font that is referenced but has no `.fcfg` gets its size from the trailing digits of its name
   (`FontCBI40` → 40 px). Assign the TTF file in the **Fonts** panel. Until then the export falls back
   to the nearest built-in Montserrat size, so the project still compiles.

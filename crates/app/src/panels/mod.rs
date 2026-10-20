@@ -64,7 +64,7 @@ impl Panel {
             Self::Events => "Events",
             Self::Timeline => "Timeline",
             Self::Fonts => "Fonts",
-            Self::Images => "Images",
+            Self::Images => "Assets",
             Self::Assistant => "AI assistant",
         }
     }
