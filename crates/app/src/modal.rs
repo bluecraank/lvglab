@@ -120,7 +120,9 @@ fn icon(ui: &mut egui::Ui, tone: Tone) {
 
 fn button_row(ui: &mut egui::Ui, actions: &[Action<'_>]) -> Option<usize> {
     let mut clicked = None;
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    // Fixed row height: a bare with_layout would take all remaining height of the modal.
+    let size = vec2(ui.available_width(), 34.0);
+    ui.allocate_ui_with_layout(size, egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         // Right to left: the first action ends up rightmost.
         for (index, action) in actions.iter().enumerate() {

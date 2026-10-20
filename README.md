@@ -72,8 +72,8 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **LVGL preview** (Edit → Preferences → Canvas → Preview): instead of the editor's own drawing, LVGL itself
   renders the screen. LVGLab runs the C code of the export in a small interpreter against LVGL 8.3 that is
   compiled into the program, so the canvas shows exactly what the device draws (fonts, anti-aliasing, themes,
-  components, images). Selection frames work as usual. Projects for LVGL 9, the simulator and custom fonts
-  still use the editor's drawing. The default stays the fast editor renderer.
+  components, images, your own fonts). Selection frames work as usual. Projects for LVGL 9 and the
+  simulator still use the editor's drawing. The default stays the fast editor renderer.
 - **Overview** button in the canvas bar: all screens side by side at a glance; click one to open it.
   The **Hidden** toggle next to Guides switches the orange outline of hidden widgets on and off.
 - WYSIWYG canvas that approximates LVGL's default theme (dark/light, primary/secondary color), with

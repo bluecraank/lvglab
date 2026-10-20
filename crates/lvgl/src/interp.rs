@@ -367,6 +367,11 @@ impl Interpreter {
         total
     }
 
+    /// An address of LVGL by name (functions used as callbacks, fonts).
+    pub fn symbol(&self, name: &str) -> Option<usize> {
+        self.symbols.get(name).copied()
+    }
+
     /// Makes `&name` resolve to a static image descriptor.
     pub fn add_symbol(&mut self, name: &str, address: usize) {
         self.symbols.insert(name.to_owned(), address);

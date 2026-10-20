@@ -1173,6 +1173,8 @@ const lvglab_function lvglab_functions[] = {
 };
 
 const lvglab_function lvglab_symbols[] = {
+    {"lv_font_get_glyph_dsc_fmt_txt", (void *)lv_font_get_glyph_dsc_fmt_txt},
+    {"lv_font_get_bitmap_fmt_txt", (void *)lv_font_get_bitmap_fmt_txt},
     {"lv_font_montserrat_8", (void *)&lv_font_montserrat_8},
     {"lv_font_montserrat_12", (void *)&lv_font_montserrat_12},
     {"lv_font_montserrat_14", (void *)&lv_font_montserrat_14},
