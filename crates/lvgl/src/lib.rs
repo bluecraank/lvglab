@@ -203,6 +203,27 @@ mod tests {
         assert_eq!(&frame.rgba[i..i + 3], &[0, 255, 0], "the component is green; skipped: {:?}", frame.skipped);
     }
 
+    #[test]
+    fn translated_text_and_theme_colors_are_drawn() {
+        let mut p = project();
+        p.export.multilang = true;
+        p.color_themes
+            .add_variable("Main", lvglab_model::color_theme::ThemeColor { color: Color::from_hex(0x00FF00), opa: 255 });
+        let screen = p.screens[0].id;
+        let mut label = p.new_widget(WidgetKind::Label);
+        label.set_prop("text", lvglab_model::prop::PropValue::Text("Hello".into()));
+        label.set_prop("translate", lvglab_model::prop::PropValue::Bool(true));
+        label.geometry.align = Align::TopLeft;
+        label.geometry.x = Coord::px(10);
+        label.geometry.y = Coord::px(65);
+        label.styles.set("main", StateMask::DEFAULT, StyleProp::TextColor, StyleValue::Theme("Main".into()));
+        p.insert(screen, 1, label).unwrap();
+        let frame = render_screen(&p, 0, None).expect("rendered");
+        let green =
+            frame.rgba.chunks_exact(4).enumerate().filter(|(i, px)| i / 200 >= 60 && px[1] > 200 && px[0] < 60).count();
+        assert!(green > 20, "green text is drawn ({green} pixels); skipped: {:?}", frame.skipped);
+    }
+
     /// With `LVGLAB_TEST_FONT=<a TTF file>` a label in a custom font is drawn.
     #[test]
     fn a_custom_font_draws_text() {
