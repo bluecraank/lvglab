@@ -134,6 +134,8 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 
 ## Screenshots
 
+![A tour through LVGLab](docs/demo.gif)
+
 | Start page | New project |
 |---|---|
 | ![Start page](docs/start-page.png) | ![New project](docs/new-project.png) |
