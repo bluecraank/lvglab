@@ -1086,7 +1086,7 @@ fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
 pub fn default_layout() -> DockState<Panel> {
     let mut dock = DockState::new(vec![Panel::Canvas]);
     let tree = dock.main_surface_mut();
-    let [center, right] = tree.split_right(
+    let [center, _] = tree.split_right(
         NodeIndex::root(),
         0.76,
         vec![Panel::Parameters, Panel::Themes, Panel::Style, Panel::Events, Panel::Assistant],
@@ -1095,8 +1095,8 @@ pub fn default_layout() -> DockState<Panel> {
     let [center, left] = tree.split_left(center, 0.24, vec![Panel::Screens]);
     let [_, layers] = tree.split_below(left, 0.22, vec![Panel::Layers]);
     tree.split_below(layers, 0.5, vec![Panel::Widgets]);
-    tree.split_below(center, 0.85, vec![Panel::Timeline]);
-    tree.split_below(right, 0.66, vec![Panel::Fonts, Panel::Images]);
+    // Timeline, fonts and assets share the wide area below the canvas.
+    tree.split_below(center, 0.78, vec![Panel::Timeline, Panel::Fonts, Panel::Images]);
     dock
 }
 

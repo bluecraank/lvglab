@@ -10,9 +10,10 @@ use super::fonts::{file_name, relative};
 use crate::app::Studio;
 use crate::i18n::tr;
 use crate::visuals;
-use crate::widgets::{grid, label, muted};
+use crate::widgets::muted;
 
-const THUMB: f32 = 48.0;
+/// Images per row.
+const PER_ROW: usize = 3;
 
 pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     if ui.button(format!("+ {}", tr("Add images…"))).clicked() {
@@ -28,65 +29,65 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let mut rename = None;
     let mut replaced = Vec::new();
     let images = studio.doc.project.assets.images.clone();
-    for (index, image) in images.iter().enumerate() {
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let (rect, _) = ui.allocate_exact_size(vec2(THUMB, THUMB), egui::Sense::hover());
-                ui.painter().rect_filled(rect, 4, ui.visuals().extreme_bg_color);
-                match studio.assets.image(&image.name) {
-                    Some(texture) => {
-                        let size = vec2(texture.size[0] as f32, texture.size[1] as f32);
-                        let fit = (THUMB / size.x.max(size.y)).min(1.0);
-                        let target = egui::Rect::from_center_size(rect.center(), size * fit);
-                        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                        ui.painter().image(texture.handle.id(), target, uv, egui::Color32::WHITE);
-                    }
-                    None => {
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "?",
-                            egui::FontId::proportional(18.0),
-                            visuals::WARNING,
-                        );
-                    }
-                }
-                ui.vertical(|ui| {
-                    let mut name = image.name.clone();
-                    grid(ui, ("image", index), |ui| {
-                        label(ui, tr("Name"), tr("Referenced as ui_img_<Name> in C."));
-                        if ui.text_edit_singleline(&mut name).changed() && !name.is_empty() {
-                            rename = Some((image.name.clone(), name.clone()));
-                        }
-                        ui.end_row();
-                        label(ui, tr("File"), "");
-                        ui.horizontal(|ui| {
-                            let exists = Project::resolve_path(dir.as_deref(), &image.path).exists();
-                            let text = RichText::new(file_name(&image.path));
-                            ui.label(if exists { text } else { text.color(visuals::WARNING) })
-                                .on_hover_text(&image.path);
-                            if ui.small_button(tr("Replace…")).clicked() {
-                                if let Some(path) = image_dialog().pick_file() {
-                                    replaced.push((index, path));
-                                }
+    for row in (0..images.len()).step_by(PER_ROW) {
+        ui.columns(PER_ROW, |cols| {
+            for (column, ui) in cols.iter_mut().enumerate() {
+                let index = row + column;
+                let Some(image) = images.get(index) else { continue };
+                egui::Frame::group(ui.style()).corner_radius(8).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    // Size of the image, and the remove button at the right.
+                    ui.horizontal(|ui| {
+                        let texture = studio.assets.image(&image.name);
+                        muted(ui, texture.map(|t| format!("{} × {} px", t.size[0], t.size[1])).unwrap_or_default());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
+                                remove = Some(index);
                             }
                         });
-                        ui.end_row();
-                        if let Some(texture) = studio.assets.image(&image.name) {
-                            label(ui, tr("Size"), "");
-                            ui.label(format!("{} × {} px", texture.size[0], texture.size[1]));
-                            ui.end_row();
-                        }
                     });
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
-                        remove = Some(index);
+                    let side = ui.available_width().min(110.0);
+                    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), side), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 6, ui.visuals().extreme_bg_color);
+                    match studio.assets.image(&image.name) {
+                        Some(texture) => {
+                            let size = vec2(texture.size[0] as f32, texture.size[1] as f32);
+                            let fit = ((side - 8.0) / size.x.max(size.y)).min(1.0);
+                            let target = egui::Rect::from_center_size(rect.center(), size * fit);
+                            let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                            ui.painter().image(texture.handle.id(), target, uv, egui::Color32::WHITE);
+                        }
+                        None => {
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "?",
+                                egui::FontId::proportional(22.0),
+                                visuals::WARNING,
+                            );
+                        }
+                    }
+                    ui.add_space(4.0);
+                    let mut name = image.name.clone();
+                    let field = ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY));
+                    if field.on_hover_text(tr("Referenced as ui_img_<Name> in C.")).changed() && !name.is_empty() {
+                        rename = Some((image.name.clone(), name.clone()));
+                    }
+                    ui.horizontal(|ui| {
+                        let exists = Project::resolve_path(dir.as_deref(), &image.path).exists();
+                        let text = RichText::new(file_name(&image.path)).small();
+                        ui.add(egui::Label::new(if exists { text } else { text.color(visuals::WARNING) }).truncate())
+                            .on_hover_text(&image.path);
+                    });
+                    if ui.small_button(tr("Replace…")).clicked() {
+                        if let Some(path) = image_dialog().pick_file() {
+                            replaced.push((index, path));
+                        }
                     }
                 });
-            });
+            }
         });
-        ui.add_space(4.0);
+        ui.add_space(6.0);
     }
     if let Some((old, new)) = rename {
         if studio.doc.project.assets.image(&new).is_none() {
