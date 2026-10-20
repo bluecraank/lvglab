@@ -367,6 +367,40 @@ impl Interpreter {
         total
     }
 
+    /// `ui_object_set_themeable_style_property(obj, selector, property, variable)`:
+    /// the generated helper binds a style property to a theme color. The preview
+    /// applies the value of the first (default) theme.
+    fn themeable_property(&mut self, args: &[Word]) -> Option<Word> {
+        let &[object, selector, property, variable] = args else { return None };
+        if object == 0 || variable == 0 {
+            return Some(0);
+        }
+        // The variables are arrays of 8 byte elements (see `make_array`); the first one is the default theme.
+        // SAFETY: `variable` points into an array of this interpreter.
+        let raw = unsafe { *(variable as *const u64) } as u32;
+        const COLORS: &[&str] = &[
+            "LV_STYLE_BG_COLOR",
+            "LV_STYLE_BG_GRAD_COLOR",
+            "LV_STYLE_BORDER_COLOR",
+            "LV_STYLE_OUTLINE_COLOR",
+            "LV_STYLE_SHADOW_COLOR",
+            "LV_STYLE_IMG_RECOLOR",
+            "LV_STYLE_LINE_COLOR",
+            "LV_STYLE_ARC_COLOR",
+            "LV_STYLE_TEXT_COLOR",
+        ];
+        let is_color = COLORS.iter().any(|name| self.constants.get(*name).is_some_and(|&v| v as u64 == property));
+        let value = if is_color {
+            // lv_color_t with 32 bit depth: blue, green, red, alpha.
+            let (r, g, b) = ((raw >> 16) & 0xFF, (raw >> 8) & 0xFF, raw & 0xFF);
+            u64::from(b | (g << 8) | (r << 16) | (0xFF << 24))
+        } else {
+            u64::from(raw)
+        };
+        // lv_obj_set_local_style_prop(obj, prop, lv_style_value_t value, selector)
+        self.call_lvgl("lv_obj_set_local_style_prop", &[object, property, value, selector])
+    }
+
     /// An address of LVGL by name (functions used as callbacks, fonts).
     pub fn symbol(&self, name: &str) -> Option<usize> {
         self.symbols.get(name).copied()
@@ -808,6 +842,13 @@ impl Interpreter {
             let value = args.first().copied().unwrap_or(0) as i64;
             let spec = 1_i64 << 13;
             return Some(if value < 0 { (1000 - value) | spec } else { value | spec } as Word);
+        }
+        // lv_i18n's `_("text")`: the preview shows the text of the project's language.
+        if name == "_" {
+            return args.first().copied();
+        }
+        if name == "ui_object_set_themeable_style_property" {
+            return self.themeable_property(&args);
         }
         if let Some(only) = &self.only_screen {
             if (name.ends_with("_screen_init") && name != only)
