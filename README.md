@@ -7,7 +7,7 @@ A modern, open source UI designer for **LVGL 8 and 9** on **ESP32**, written in 
 Design screens visually, import existing **SquareLine Studio** projects, and LVGLab generates the
 **C code** of your UI.
 
-![LVGLab](docs/screenshot.png)
+![A tour through LVGLab](docs/demo.gif)
 
 > LVGLab is written from scratch: the editor, the importer and the code generator are its own code,
 > based on LVGL's public API. No other UI designer was reverse engineered or copied.
@@ -133,8 +133,6 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
   files, for example of deleted screens.
 
 ## Screenshots
-
-![A tour through LVGLab](docs/demo.gif)
 
 | Start page | New project |
 |---|---|
