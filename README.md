@@ -540,6 +540,20 @@ Design principles:
 
 ## Development
 
+### Signed builds
+
+The release workflow signs the programs when the certificates are stored as repository secrets
+(*Settings → Secrets and variables → Actions*); without them the builds are unsigned as before.
+
+| Secret | Purpose |
+|---|---|
+| `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Code signing certificate (`.pfx`, base64) for `lvglab.exe` and the installer |
+| `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGNING_IDENTITY` | Developer ID Application certificate (`.p12`, base64) and its name, e.g. `Developer ID Application: Name (TEAMID)` |
+| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Optional: notarization with an app-specific password |
+
+LVGLab looks for a newer release on GitHub when it starts (*Preferences → Export*, or *Help → Check for updates*)
+and shows a link in the status bar. Nothing is downloaded or installed automatically.
+
 The Windows installer is built with [Inno Setup](https://jrsoftware.org/isinfo.php) from
 [`installer/lvglab.iss`](installer/lvglab.iss):
 `iscc /DAppVersion=0.12.0 /DSourceDir=..\target\release installer\lvglab.iss` writes it to `dist/`.

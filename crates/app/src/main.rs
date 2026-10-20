@@ -26,6 +26,7 @@ mod start;
 mod stats;
 mod tabs;
 mod tour;
+mod updates;
 mod visuals;
 mod widgets;
 

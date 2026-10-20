@@ -32,6 +32,17 @@ jobs:
             os: macos-latest
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
+    # Code signing runs only when the certificates are stored as repository secrets
+    # (see "Signed builds" in the README); without them the builds stay unsigned.
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -45,6 +56,34 @@ jobs:
           key: ${{ matrix.target }}
       - name: Build
         run: cargo build --release --locked -p lvglab --target ${{ matrix.target }}
+      - name: Sign (Windows)
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "certificate.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -match "x64" } | Select-Object -Last 1
+          "SIGNTOOL=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
+          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD "target\${{ matrix.target }}\release\lvglab.exe"
+          if ($LASTEXITCODE -ne 0) { throw "signing failed" }
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE != ''
+        run: |
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$keychain"
+          security list-keychains -d user -s "$keychain"
+          binary="target/${{ matrix.target }}/release/lvglab"
+          codesign --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" "$binary"
+          if [ -n "$APPLE_ID" ]; then
+            ditto -c -k --keepParent "$binary" "$RUNNER_TEMP/notarize.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          fi
       - name: Package
         shell: bash
         run: |
@@ -73,6 +112,12 @@ jobs:
           $version = "$env:GITHUB_REF_NAME".TrimStart('v')
           & $iscc.FullName /Q "/DAppVersion=$version" "/DSourceDir=..\target\${{ matrix.target }}\release" "/DOutputDir=..\installer-out" installer\lvglab.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          if ($env:SIGNTOOL) {
+            Get-ChildItem installer-out\*.exe | ForEach-Object {
+              & $env:SIGNTOOL sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $env:PFX /p $env:WINDOWS_CERTIFICATE_PASSWORD $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signing the installer failed" }
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

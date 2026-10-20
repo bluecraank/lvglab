@@ -363,6 +363,8 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
             });
             card(&mut cols[1], crate::icons::EXPORT, tr("Export"), |ui| {
                 ui.checkbox(&mut s.open_export_folder, tr("Open the folder after exporting"));
+                ui.checkbox(&mut s.check_updates, tr("Look for a new version on start"))
+                    .on_hover_text(tr("Asks GitHub for the latest release; nothing is sent about your projects."));
             });
             });
             });

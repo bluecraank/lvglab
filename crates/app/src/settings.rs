@@ -112,6 +112,8 @@ pub struct AppSettings {
     pub save_timeline: bool,
     // Export
     pub open_export_folder: bool,
+    /// Looks for a newer release on start.
+    pub check_updates: bool,
     // AI assistant
     /// Anthropic API key; empty uses the `ANTHROPIC_API_KEY` environment variable.
     pub ai_api_key: String,
@@ -155,6 +157,7 @@ impl Default for AppSettings {
             autosave_project: true,
             save_timeline: true,
             open_export_folder: false,
+            check_updates: true,
             ai_api_key: String::new(),
             ai_model: lvglab_ai::MODELS[0].0.to_owned(),
             ai_effort: "medium".to_owned(),
