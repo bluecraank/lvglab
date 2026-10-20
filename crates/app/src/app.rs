@@ -45,6 +45,8 @@ pub struct Studio {
     pub clipboard: Option<Widget>,
     /// A copied screen with what it needs (components, fonts, images).
     pub screen_clip: Option<crate::commands::ScreenClip>,
+    /// The check for a newer release.
+    pub updates: crate::updates::UpdateCheck,
     /// The parked projects of the tabs; the entry of the active tab is `None`.
     pub tabs: Vec<Option<crate::tabs::Workspace>>,
     pub active_tab: usize,
@@ -192,6 +194,7 @@ impl Studio {
             clipboard: None,
             screen_clip: None,
             tabs: vec![None],
+            updates: Default::default(),
             active_tab: 0,
             props_clipboard: None,
             clipboard_time: None,
@@ -510,6 +513,11 @@ impl StudioApp {
                         self.studio.tour = Some(0);
                         ui.close_menu();
                     }
+                    let checking = self.studio.updates.is_running();
+                    if ui.add_enabled(!checking, egui::Button::new(tr("Check for updates"))).clicked() {
+                        self.studio.updates.start(true);
+                        ui.close_menu();
+                    }
                     if ui.button(tr("About LVGLab")).clicked() {
                         self.studio.show_about = true;
                         ui.close_menu();
@@ -696,6 +704,18 @@ impl StudioApp {
                 let s = &self.studio;
                 ui.label(egui::RichText::new(s.status.as_deref().unwrap_or(tr("Ready"))).small());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some(crate::updates::Outcome::Newer(update)) = &s.updates.outcome {
+                        let text = format!(
+                            "{} {}",
+                            crate::icons::ARROW_CIRCLE_UP,
+                            crate::i18n::trf("LVGLab {} is available", &[&update.version])
+                        );
+                        let link = egui::RichText::new(text).small().strong().color(visuals::ACCENT);
+                        if ui.add(egui::Link::new(link)).on_hover_text(&update.url).clicked() {
+                            ui.ctx().open_url(egui::OpenUrl::new_tab(&update.url));
+                        }
+                        ui.separator();
+                    }
                     let p = s.project();
                     let widgets: usize = p.screens.iter().map(|s| s.descendant_count()).sum();
                     let shape = tr(p.display.shape.label());
@@ -1006,6 +1026,23 @@ impl StudioApp {
             s.tour = Some(0);
         }
         crate::tour::show(ctx, &mut self.studio);
+        if self.frame == 2 && self.studio.settings.check_updates && self.screenshot.is_none() {
+            self.studio.updates.start(false);
+        }
+        if let Some(outcome) = self.studio.updates.poll() {
+            use crate::updates::Outcome;
+            let manual = self.studio.updates.manual;
+            match outcome {
+                Outcome::Newer(update) => {
+                    self.studio.notify(crate::i18n::trf("LVGLab {} is available", &[&update.version]));
+                }
+                Outcome::UpToDate if manual => self.studio.notify(tr("LVGLab is up to date.")),
+                Outcome::Failed(err) if manual => {
+                    self.studio.notify(crate::i18n::trf("The update check failed: {}", &[&err]));
+                }
+                _ => {}
+            }
+        }
         self.shortcuts(ctx);
 
         for command in std::mem::take(&mut self.studio.commands) {
