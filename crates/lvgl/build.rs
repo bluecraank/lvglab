@@ -29,5 +29,29 @@ fn main() {
         .warnings(false)
         .opt_level(2);
     build.compile("lvgl83");
+
+    // LVGL 9: every symbol gets the prefix lv9_ (rename9.h), so both releases link into one program.
+    let v9 = vendor.join("lv9");
+    let lvgl9 = vendor.join("lvgl96");
+    let mut files = Vec::new();
+    sources(&lvgl9.join("src"), &mut files);
+    files.push(v9.join("shim9.c"));
+    files.push(v9.join("names9.c"));
+    files.push(v9.join("colors9.c"));
+    let mut build = cc::Build::new();
+    let rename = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo")).join(&v9).join("rename9.h");
+    if build.get_compiler().is_like_msvc() {
+        build.flag(format!("/FI{}", rename.display()));
+    } else {
+        build.flag("-include").flag(rename.display().to_string());
+    }
+    build
+        .files(&files)
+        .include(&v9)
+        .include(&lvgl9)
+        .define("LV_CONF_INCLUDE_SIMPLE", None)
+        .warnings(false)
+        .opt_level(2);
+    build.compile("lvgl96");
     println!("cargo:rerun-if-changed=vendor");
 }

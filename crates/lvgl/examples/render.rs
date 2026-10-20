@@ -7,6 +7,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let index: usize = args.next().ok_or("screen number missing")?.parse()?;
     let out = args.next().ok_or("output file missing")?;
     let mut project = lvglab_model::Project::load(&path)?;
+    if std::env::var("LVGL9").is_ok() {
+        project.lvgl_version = lvglab_model::project::LvglVersion::V9_6_0;
+    }
     if std::env::var("LVGL8").is_ok() {
         project.lvgl_version = lvglab_model::project::LvglVersion::V8_3_11;
     }

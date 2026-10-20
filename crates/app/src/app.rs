@@ -1178,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    fn the_lvgl_preview_draws_lvgl_8_projects_and_gives_way_for_lvgl_9() {
+    fn the_lvgl_preview_draws_lvgl_8_and_lvgl_9_projects() {
         crate::sandbox::enable();
         let ctx = egui::Context::default();
         let frame = |app: &mut StudioApp| {
@@ -1201,8 +1201,9 @@ mod tests {
         for _ in 0..3 {
             frame(&mut app);
         }
-        // LVGL 9 is not rendered by the preview; the editor draws the screen.
-        assert_eq!(app.studio.lvgl_preview.error, None);
+        // LVGL 9 projects are drawn by the LVGL 9 that is compiled in as well.
+        assert_eq!(app.studio.lvgl_preview.error, None, "{:?}", app.studio.lvgl_preview.skipped);
+        assert!(app.studio.lvgl_preview.has_picture());
     }
 
     #[test]

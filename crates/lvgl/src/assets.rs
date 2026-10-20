@@ -92,3 +92,39 @@ mod tests {
         assert_eq!((header & 31, (header >> 10) & 2047, header >> 21), (5, 2, 1));
     }
 }
+
+/// An image of an LVGL 9 export: its pixels stay as they are (RGB565, or
+/// RGB565 followed by an alpha plane), LVGL 9 draws both formats.
+#[derive(Clone)]
+pub struct Image9 {
+    pub name: String,
+    pub cf: u32,
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+    pub data: Vec<u8>,
+}
+
+/// Reads the images of a generated LVGL 9 file (`ui_img_*.c`).
+pub fn parse_images_v9(source: &str) -> Vec<Image9> {
+    let Some(at) = source.find("const lv_image_dsc_t ") else { return Vec::new() };
+    let head = &source[at + "const lv_image_dsc_t ".len()..];
+    let name: String = head.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+    let number = |key: &str| -> Option<u32> {
+        let at = head.find(key)? + key.len();
+        let digits: String = head[at..].trim_start().chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    };
+    let (Some(width), Some(height)) = (number(".header.w ="), number(".header.h =")) else { return Vec::new() };
+    // LV_COLOR_FORMAT_RGB565A8 = 0x14, LV_COLOR_FORMAT_RGB565 = 0x12.
+    let cf = if head.contains("LV_COLOR_FORMAT_RGB565A8") { 0x14 } else { 0x12 };
+    let stride = number(".header.stride =").unwrap_or(width * 2);
+    let Some(data_at) = source.find(&format!("{name}_data[] = {{")) else { return Vec::new() };
+    let body = &source[data_at..];
+    let (Some(open), Some(close)) = (body.find('{'), body.find("};")) else { return Vec::new() };
+    let data: Vec<u8> = body[open + 1..close]
+        .split(',')
+        .filter_map(|t| u8::from_str_radix(t.trim().trim_start_matches("0x"), 16).ok())
+        .collect();
+    vec![Image9 { name, cf, width, height, stride, data }]
+}
