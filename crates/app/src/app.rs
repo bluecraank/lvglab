@@ -551,11 +551,11 @@ impl StudioApp {
                     button(ui, tr("Save"), "Ctrl+S", Command::Save);
                     ui.separator();
                     undo_clicked = ui
-                        .add_enabled(undo, egui::Button::new("⟲"))
+                        .add_enabled(undo, egui::Button::new(crate::icons::ARROW_COUNTER_CLOCKWISE))
                         .on_hover_text(format!("{} (Ctrl+Z)", tr("Undo")))
                         .clicked();
                     redo_clicked = ui
-                        .add_enabled(redo, egui::Button::new("⟳"))
+                        .add_enabled(redo, egui::Button::new(crate::icons::ARROW_CLOCKWISE))
                         .on_hover_text(format!("{} (Ctrl+Y)", tr("Redo")))
                         .clicked();
                 });

@@ -75,7 +75,7 @@ fn color_themes(ui: &mut egui::Ui, p: &mut Project) {
             ui.horizontal(|ui| {
                 widgets::color(ui, &mut value.color);
                 ui.add(egui::DragValue::new(&mut value.opa).range(0..=255).prefix("α "));
-                if ui.small_button("✖").on_hover_text(tr("Remove color")).clicked() {
+                if ui.small_button(crate::icons::X).on_hover_text(tr("Remove color")).clicked() {
                     remove = Some(index);
                 }
             });

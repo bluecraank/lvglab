@@ -18,10 +18,18 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let current = studio.timeline.current();
     let count = studio.timeline.entries().len();
     ui.horizontal(|ui| {
-        if ui.add_enabled(studio.timeline.can_undo(), egui::Button::new("◀")).on_hover_text(tr("Undo")).clicked() {
+        if ui
+            .add_enabled(studio.timeline.can_undo(), egui::Button::new(crate::icons::CARET_LEFT))
+            .on_hover_text(tr("Undo"))
+            .clicked()
+        {
             studio.push(Command::Undo);
         }
-        if ui.add_enabled(studio.timeline.can_redo(), egui::Button::new("▶")).on_hover_text(tr("Redo")).clicked() {
+        if ui
+            .add_enabled(studio.timeline.can_redo(), egui::Button::new(crate::icons::CARET_RIGHT))
+            .on_hover_text(tr("Redo"))
+            .clicked()
+        {
             studio.push(Command::Redo);
         }
         ui.label(trf("Step {} of {}", &[&(current + 1), &count]));

@@ -21,7 +21,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
         ui.label(RichText::new(tr("AI assistant")).strong());
         muted(ui, format!("{model} · {}", tr(effort_label(&studio.settings.ai_effort))));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("⚙").on_hover_text(tr("Preferences")).clicked() {
+            if ui.small_button(crate::icons::GEAR).on_hover_text(tr("Preferences")).clicked() {
                 studio.show_preferences = true;
             }
             if !studio.assistant.history.is_empty() && ui.small_button(tr("Clear")).clicked() {

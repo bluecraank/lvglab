@@ -65,7 +65,7 @@ fn node(ui: &mut egui::Ui, studio: &Studio, widget: &Widget, depth: usize, filte
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.add_space(depth as f32 * 12.0);
         if has_children {
-            let icon = if state.is_open() { "⏷" } else { "⏵" };
+            let icon = if state.is_open() { crate::icons::CARET_DOWN } else { crate::icons::CARET_RIGHT };
             if ui.add(egui::Label::new(icon).sense(Sense::click())).clicked() {
                 state.toggle(ui);
             }
@@ -75,14 +75,14 @@ fn node(ui: &mut egui::Ui, studio: &Studio, widget: &Widget, depth: usize, filte
         let hidden = widget.is_hidden();
         let selected = studio.selected == Some(widget.id) || studio.extra_selection.contains(&widget.id);
         actions.rows.push(widget.id);
-        let mut text = RichText::new(format!("{}  {}", widget.def().icon, widget.name));
+        let mut text = RichText::new(format!("{}  {}", crate::icons::widget(widget.kind), widget.name));
         if hidden {
             text = text.color(visuals::palette(ui.ctx()).muted).italics();
         }
         let label = ui.selectable_label(selected, text).interact(Sense::click_and_drag());
         if widget.kind != lvglab_model::WidgetKind::Screen {
             let muted = visuals::palette(ui.ctx()).muted;
-            let eye = RichText::new("👁").color(if hidden { muted.gamma_multiply(0.4) } else { muted });
+            let eye = RichText::new(crate::icons::EYE).color(if hidden { muted.gamma_multiply(0.4) } else { muted });
             let eye_response =
                 ui.add(egui::Label::new(eye).sense(Sense::click())).on_hover_text(tr("Toggle hidden flag"));
             if eye_response.clicked() {

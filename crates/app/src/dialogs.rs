@@ -89,7 +89,7 @@ fn display_rows(ui: &mut egui::Ui, id: &str, display: &mut DisplaySettings) {
         ui.add(egui::DragValue::new(&mut display.width).range(32..=2048).suffix(" px"));
         ui.label("×");
         ui.add(egui::DragValue::new(&mut display.height).range(32..=2048).suffix(" px"));
-        if ui.small_button("↔").on_hover_text(tr("Swap width and height")).clicked() {
+        if ui.small_button(crate::icons::ARROWS_LEFT_RIGHT).on_hover_text(tr("Swap width and height")).clicked() {
             std::mem::swap(&mut display.width, &mut display.height);
         }
     });
@@ -213,7 +213,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
             let s = &mut studio.settings;
             egui::ScrollArea::vertical().max_height(max_height).show(ui, |ui| {
             ui.columns(2, |cols| {
-            card(&mut cols[0], "⚙", tr("General"), |ui| {
+            card(&mut cols[0], crate::icons::GEAR, tr("General"), |ui| {
                 grid(ui, "prefs_general_grid", |ui| {
                     label(ui, tr("Language"), "");
                     ui.horizontal(|ui| {
@@ -258,7 +258,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     ui.end_row();
                 });
             });
-            card(&mut cols[0], "🎨", tr("Canvas"), |ui| {
+            card(&mut cols[0], crate::icons::PALETTE, tr("Canvas"), |ui| {
                 grid(ui, "prefs_canvas_grid", |ui| {
                     label(ui, tr("Background"), "");
                     widgets::choice(
@@ -303,7 +303,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     ui.end_row();
                 });
             });
-            card(&mut cols[1], "✏", tr("Editing"), |ui| {
+            card(&mut cols[1], crate::icons::PENCIL_SIMPLE, tr("Editing"), |ui| {
                 grid(ui, "prefs_editing_grid", |ui| {
                     label(ui, tr("Timeline length"), tr("Older steps are dropped."));
                     ui.add(egui::DragValue::new(&mut s.history_limit).range(20..=5000).suffix(tr(" steps")));
@@ -331,7 +331,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     ui.end_row();
                 });
             });
-            card(&mut cols[1], "💬", tr("AI assistant"), |ui| {
+            card(&mut cols[1], crate::icons::CHAT_TEXT, tr("AI assistant"), |ui| {
                 grid(ui, "prefs_ai_grid", |ui| {
                     label(ui, tr("API key"), tr("Anthropic API key. Stored in the editor settings on this computer."));
                     ui.horizontal(|ui| {
@@ -361,7 +361,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                 }
                 muted(ui, tr("Requests are billed to your Anthropic account. The project description is sent with each request."));
             });
-            card(&mut cols[1], "📤", tr("Export"), |ui| {
+            card(&mut cols[1], crate::icons::EXPORT, tr("Export"), |ui| {
                 ui.checkbox(&mut s.open_export_folder, tr("Open the folder after exporting"));
             });
             });

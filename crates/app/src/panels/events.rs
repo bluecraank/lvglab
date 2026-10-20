@@ -26,7 +26,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(format!("#{}", index + 1)).strong());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
+                    if ui.small_button(crate::icons::X).on_hover_text(tr("Remove")).clicked() {
                         remove = Some(index);
                     }
                 });

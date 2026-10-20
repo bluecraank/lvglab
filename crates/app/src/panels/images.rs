@@ -41,7 +41,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
                         let texture = studio.assets.image(&image.name);
                         muted(ui, texture.map(|t| format!("{} × {} px", t.size[0], t.size[1])).unwrap_or_default());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
+                            if ui.small_button(crate::icons::X).on_hover_text(tr("Remove")).clicked() {
                                 remove = Some(index);
                             }
                         });

@@ -209,7 +209,7 @@ fn primary(text: &str) -> egui::Button<'_> {
 }
 
 fn note(ui: &mut egui::Ui, text: &str) {
-    ui.colored_label(visuals::WARNING, format!("⚠ {text}"));
+    ui.colored_label(visuals::WARNING, format!("\u{E4E0} {text}"));
 }
 
 /// Rename or use the existing entry.

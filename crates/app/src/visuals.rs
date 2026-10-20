@@ -36,6 +36,7 @@ pub fn palette(ctx: &egui::Context) -> Palette {
 }
 
 pub fn install(ctx: &egui::Context) {
+    ctx.set_fonts(crate::icons::fonts());
     ctx.set_visuals_of(Theme::Dark, dark());
     ctx.set_visuals_of(Theme::Light, light());
     ctx.all_styles_mut(|style| {
