@@ -10,7 +10,9 @@ use crate::document::EntryKind;
 use crate::i18n::{tr, trf};
 use crate::visuals::{self, ACCENT, SUCCESS};
 
-const CARD_WIDTH: f32 = 150.0;
+const CHIP_HEIGHT: f32 = 28.0;
+const CHIP_MIN: f32 = 70.0;
+const CHIP_MAX: f32 = 240.0;
 
 pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let current = studio.timeline.current();
@@ -44,50 +46,60 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
             let shown_current = visible.iter().copied().rfind(|&i| i <= current).unwrap_or(current);
             for (position, &index) in visible.iter().enumerate() {
                 let entry = &entries[index];
-                let (rect, response) = ui.allocate_exact_size(vec2(CARD_WIDTH, 52.0), Sense::click());
                 let is_current = index == if this_screen { shown_current } else { current };
                 let future = index > current;
                 let saved = entry.kind != EntryKind::Change;
-                let visuals = ui.style().interact(&response);
-                let fill = match (is_current, saved) {
-                    (true, _) => visuals::ACCENT_SOFT,
-                    (false, true) => SUCCESS.gamma_multiply(0.18),
-                    (false, false) => visuals.weak_bg_fill,
-                };
-                ui.painter().rect_filled(rect, 8, fill);
-                let stroke = match (is_current, saved) {
-                    (true, _) => Stroke::new(1.5_f32, ACCENT),
-                    (false, true) => Stroke::new(1.5_f32, SUCCESS),
-                    (false, false) => Stroke::new(1.0_f32, visuals.bg_stroke.color),
-                };
-                ui.painter().rect_stroke(rect, 8, stroke, egui::StrokeKind::Inside);
-                let text_color = if future { muted } else { ui.visuals().text_color() };
-                let dot = rect.left_center() + vec2(12.0, 0.0);
-                if saved {
-                    // Save markers: a ring with a check mark.
-                    let color = if future { muted } else { SUCCESS };
-                    ui.painter().circle_stroke(dot, 5.5, Stroke::new(1.5_f32, color));
-                    let check = [dot + vec2(-2.5, 0.0), dot + vec2(-0.5, 2.0), dot + vec2(3.0, -2.0)];
-                    ui.painter().line(check.to_vec(), Stroke::new(1.5_f32, color));
+                // A chip as wide as its text: number badge, then the label.
+                let label = elide(&entry.label, 28);
+                let font = egui::FontId::proportional(12.5);
+                let text_color = if is_current {
+                    Color32::WHITE
+                } else if future {
+                    muted
                 } else {
-                    ui.painter().circle_filled(dot, 4.0, if future { muted } else { ACCENT });
+                    ui.visuals().text_color()
+                };
+                let galley = ui.painter().layout_no_wrap(label, font, text_color);
+                let width = (galley.size().x + 40.0).clamp(CHIP_MIN, CHIP_MAX);
+                let (rect, response) = ui.allocate_exact_size(vec2(width, CHIP_HEIGHT), Sense::click());
+                let hovered = response.hovered();
+                let fill = if is_current {
+                    ACCENT
+                } else if hovered {
+                    ui.visuals().widgets.hovered.weak_bg_fill
+                } else {
+                    ui.visuals().widgets.inactive.weak_bg_fill
+                };
+                let painter = ui.painter();
+                painter.rect_filled(rect, CHIP_HEIGHT / 2.0, fill);
+                if saved && !is_current {
+                    painter.rect_stroke(
+                        rect,
+                        CHIP_HEIGHT / 2.0,
+                        Stroke::new(1.5_f32, SUCCESS),
+                        egui::StrokeKind::Inside,
+                    );
                 }
-                let label = elide(&entry.label, 20);
-                ui.painter().text(
-                    rect.left_top() + vec2(24.0, 10.0),
-                    egui::Align2::LEFT_TOP,
-                    label,
-                    egui::FontId::proportional(12.5),
-                    text_color,
-                );
-                ui.painter().text(
-                    rect.left_bottom() + vec2(24.0, -10.0),
-                    egui::Align2::LEFT_BOTTOM,
-                    format!("#{} · {}", index + 1, ago(entry.time)),
-                    egui::FontId::proportional(10.5),
-                    muted,
-                );
-                let response = response.on_hover_text(&entry.label);
+                // The badge: the step number, or a check mark for saves.
+                let badge = rect.left_center() + vec2(CHIP_HEIGHT / 2.0, 0.0);
+                let badge_color = if is_current {
+                    Color32::WHITE
+                } else if saved {
+                    SUCCESS
+                } else if future {
+                    muted
+                } else {
+                    ACCENT
+                };
+                if saved {
+                    let check = [badge + vec2(-4.0, 0.0), badge + vec2(-1.0, 3.0), badge + vec2(4.5, -3.0)];
+                    painter.line(check.to_vec(), Stroke::new(2.0_f32, badge_color));
+                } else {
+                    painter.circle_filled(badge, 4.0, badge_color);
+                }
+                let text_pos = egui::pos2(rect.left() + CHIP_HEIGHT - 2.0, rect.center().y - galley.size().y / 2.0);
+                painter.galley(text_pos, galley, text_color);
+                let response = response.on_hover_text(format!("#{} · {}", index + 1, entry.label));
                 if response.clicked() && !is_current {
                     studio.commands.push(if this_screen {
                         Command::RestoreScreen(index)
@@ -99,8 +111,12 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
                     response.scroll_to_me(Some(egui::Align::Max));
                 }
                 if position + 1 < visible.len() {
-                    let (line, _) = ui.allocate_exact_size(vec2(10.0, 52.0), Sense::hover());
-                    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0_f32, Color32::from_gray(110)));
+                    let (line, _) = ui.allocate_exact_size(vec2(12.0, CHIP_HEIGHT), Sense::hover());
+                    ui.painter().hline(
+                        line.x_range(),
+                        line.center().y,
+                        Stroke::new(1.5_f32, muted.gamma_multiply(0.6)),
+                    );
                 }
             }
         });
