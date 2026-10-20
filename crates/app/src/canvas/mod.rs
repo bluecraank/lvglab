@@ -220,15 +220,13 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     };
     let clip = display.intersect(rect);
     // LVGL draws the screen itself when the preview is set to it.
-    let lvgl_picture = if studio.settings.preview_renderer == crate::settings::PreviewRenderer::Lvgl
-        && studio.simulation.is_none()
-        && !project.lvgl_version.is_v9()
-    {
-        let dir = studio.doc.dir().map(std::path::Path::to_path_buf);
-        studio.lvgl_preview.texture(ui.ctx(), project, screen_id, dir.as_deref())
-    } else {
-        None
-    };
+    let lvgl_picture =
+        if studio.settings.preview_renderer == crate::settings::PreviewRenderer::Lvgl && studio.simulation.is_none() {
+            let dir = studio.doc.dir().map(std::path::Path::to_path_buf);
+            studio.lvgl_preview.texture(ui.ctx(), project, screen_id, dir.as_deref())
+        } else {
+            None
+        };
     // Lays out and paints one screen; offsets are fractions of the display.
     let paint = |widget: &lvglab_model::Widget, offset: (f32, f32), opacity: f32, preview| {
         // Component instances are shown with the content of their component.

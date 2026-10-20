@@ -22,6 +22,30 @@ pub struct Font {
     underline_thickness: i8,
     bpp: u16,
     cmap_count: u16,
+    /// The tables as read, for LVGL 9 (which builds its own structs).
+    pub glyph_list: Vec<Glyph>,
+    pub cmap_list: Vec<Cmap>,
+}
+
+/// One glyph: bitmap index, advance (8.4), box size and offset. Same layout as `lvglab_glyph` in shim9.c.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct Glyph {
+    pub index: u32,
+    pub adv: u32,
+    pub w: u8,
+    pub h: u8,
+    pub x: i8,
+    pub y: i8,
+}
+
+/// A range of code points. Same layout as `lvglab_cmap` in shim9.c.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct Cmap {
+    pub start: u32,
+    pub length: u16,
+    pub first: u16,
 }
 
 /// The number after `.key =` in `text`.
@@ -53,6 +77,8 @@ pub fn parse_fonts(sources: &[&str]) -> Vec<Font> {
         let mut glyphs = Vec::new();
         let mut cmaps = Vec::new();
         let mut cmap_count = 0_u16;
+        let mut glyph_list = Vec::new();
+        let mut cmap_list = Vec::new();
         for line in source.lines() {
             let line = line.trim();
             if line.starts_with("{.bitmap_index") {
@@ -70,6 +96,14 @@ pub fn parse_fonts(sources: &[&str]) -> Vec<Font> {
                 let packed = (index as u32 & 0xF_FFFF) | ((adv as u32 & 0xFFF) << 20);
                 glyphs.extend_from_slice(&packed.to_le_bytes());
                 glyphs.extend_from_slice(&[w as u8, h as u8, x as i8 as u8, y as i8 as u8]);
+                glyph_list.push(Glyph {
+                    index: index as u32,
+                    adv: adv as u32,
+                    w: w as u8,
+                    h: h as u8,
+                    x: x as i8,
+                    y: y as i8,
+                });
             } else if line.starts_with("{.range_start") {
                 let (Some(start), Some(length), Some(first)) =
                     (number(line, ".range_start"), number(line, ".range_length"), number(line, ".glyph_id_start"))
@@ -84,6 +118,7 @@ pub fn parse_fonts(sources: &[&str]) -> Vec<Font> {
                 entry[26] = 2; // LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY
                 cmaps.extend_from_slice(&entry);
                 cmap_count += 1;
+                cmap_list.push(Cmap { start: start as u32, length: length as u16, first: first as u16 });
             }
         }
         let (Some(line_height), Some(base_line)) = (number(head, ".line_height"), number(head, ".base_line")) else {
@@ -107,12 +142,29 @@ pub fn parse_fonts(sources: &[&str]) -> Vec<Font> {
             underline_thickness: number(head, ".underline_thickness").unwrap_or(0) as i8,
             bpp,
             cmap_count,
+            glyph_list,
+            cmap_list,
         });
     }
     fonts
 }
 
 impl Font {
+    pub fn bitmap(&self) -> &[u8] {
+        &self.bitmap
+    }
+
+    /// Line height, base line, underline position and thickness, bits per pixel.
+    pub fn metrics(&self) -> (i32, i32, i32, i32, i32) {
+        (
+            i32::from(self.line_height),
+            i32::from(self.base_line),
+            i32::from(self.underline_position),
+            i32::from(self.underline_thickness),
+            i32::from(self.bpp),
+        )
+    }
+
     /// Fills in the pointers and returns the address of the `lv_font_t`.
     /// `glyph_dsc` and `glyph_bitmap` are the addresses of LVGL's functions for this format.
     pub fn address(&mut self, glyph_dsc: usize, glyph_bitmap: usize) -> usize {

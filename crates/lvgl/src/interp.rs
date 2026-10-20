@@ -27,6 +27,47 @@ unsafe extern "C" {
     static lvglab_functions: [FunctionEntry; 0];
     static lvglab_symbols: [FunctionEntry; 0];
     static lvglab_constants: [ConstantEntry; 0];
+    static lvglab9_functions: [FunctionEntry; 0];
+    static lvglab9_symbols: [FunctionEntry; 0];
+    static lvglab9_constants: [ConstantEntry; 0];
+    static lvglab9_color_wrappers: [FunctionEntry; 0];
+}
+
+/// The names of one LVGL release: functions, data (fonts) and constants.
+pub struct Tables {
+    functions: HashMap<String, usize>,
+    symbols: HashMap<String, usize>,
+    constants: HashMap<String, i64>,
+    /// LVGL 9 (other names for a few functions, other coordinates).
+    v9: bool,
+}
+
+static TABLES_8: std::sync::OnceLock<Tables> = std::sync::OnceLock::new();
+static TABLES_9: std::sync::OnceLock<Tables> = std::sync::OnceLock::new();
+
+impl Tables {
+    pub fn v8() -> &'static Tables {
+        TABLES_8.get_or_init(|| Tables {
+            functions: read_functions(std::ptr::addr_of!(lvglab_functions).cast()),
+            symbols: read_functions(std::ptr::addr_of!(lvglab_symbols).cast()),
+            constants: read_constants(std::ptr::addr_of!(lvglab_constants).cast()),
+            v9: false,
+        })
+    }
+
+    pub fn v9() -> &'static Tables {
+        TABLES_9.get_or_init(|| Tables {
+            // Functions with colors in their signature are called through wrappers (colors9.c).
+            functions: {
+                let mut functions = read_functions(std::ptr::addr_of!(lvglab9_functions).cast());
+                functions.extend(read_functions(std::ptr::addr_of!(lvglab9_color_wrappers).cast()));
+                functions
+            },
+            symbols: read_functions(std::ptr::addr_of!(lvglab9_symbols).cast()),
+            constants: read_constants(std::ptr::addr_of!(lvglab9_constants).cast()),
+            v9: true,
+        })
+    }
 }
 
 fn read_functions(table: *const FunctionEntry) -> HashMap<String, usize> {
@@ -43,9 +84,9 @@ fn read_functions(table: *const FunctionEntry) -> HashMap<String, usize> {
     map
 }
 
-fn read_constants() -> HashMap<String, i64> {
+fn read_constants(table: *const ConstantEntry) -> HashMap<String, i64> {
     let mut map = HashMap::new();
-    let mut entry = std::ptr::addr_of!(lvglab_constants).cast::<ConstantEntry>();
+    let mut entry = table;
     // SAFETY: as above.
     unsafe {
         while !(*entry).name.is_null() {
@@ -180,9 +221,9 @@ type Word = u64;
 pub struct Interpreter {
     tokens: Vec<Tok>,
     functions: HashMap<String, Function>,
-    lvgl_functions: HashMap<String, usize>,
+    tables: &'static Tables,
+    /// Images and fonts of the export, by name.
     symbols: HashMap<String, usize>,
-    constants: HashMap<String, i64>,
     globals: HashMap<String, Word>,
     scopes: Vec<HashMap<String, Word>>,
     /// Memory handed to LVGL (strings, arrays); lives as long as the interpreter.
@@ -204,25 +245,19 @@ const IGNORED_CALLS: &[&str] = &[
     "lv_obj_add_event_cb",
     "lv_obj_set_user_data",
     "lv_scr_load_anim",
+    "lv_screen_load_anim",
     "lv_obj_remove_event_cb",
     // Animations need their sources; the preview draws the first frame only.
     "lv_animimg_start",
 ];
 
-impl Default for Interpreter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Interpreter {
-    pub fn new() -> Self {
+    pub fn new(tables: &'static Tables) -> Self {
         Self {
             tokens: Vec::new(),
             functions: HashMap::new(),
-            lvgl_functions: read_functions(std::ptr::addr_of!(lvglab_functions).cast()),
-            symbols: read_functions(std::ptr::addr_of!(lvglab_symbols).cast()),
-            constants: read_constants(),
+            tables,
+            symbols: HashMap::new(),
             globals: HashMap::new(),
             scopes: Vec::new(),
             strings: Vec::new(),
@@ -342,7 +377,7 @@ impl Interpreter {
 
     /// Calls a function of LVGL directly.
     pub fn call_lvgl(&mut self, name: &str, args: &[Word]) -> Option<Word> {
-        let address = *self.lvgl_functions.get(name)?;
+        let address = *self.tables.functions.get(name)?;
         let mut a = [0_u64; 8];
         for (slot, value) in a.iter_mut().zip(args) {
             *slot = *value;
@@ -355,7 +390,8 @@ impl Interpreter {
 
     /// Number of objects below and including `object`.
     pub fn count_objects(&mut self, object: Word) -> usize {
-        let children = self.call_lvgl("lv_obj_get_child_cnt", &[object]).unwrap_or(0) as u32;
+        let count = self.api("lv_obj_get_child_cnt", "lv_obj_get_child_count");
+        let children = self.call_lvgl(count, &[object]).unwrap_or(0) as u32;
         let mut total = 1;
         for index in 0..children {
             if let Some(child) = self.call_lvgl("lv_obj_get_child", &[object, u64::from(index)]) {
@@ -389,7 +425,8 @@ impl Interpreter {
             "LV_STYLE_ARC_COLOR",
             "LV_STYLE_TEXT_COLOR",
         ];
-        let is_color = COLORS.iter().any(|name| self.constants.get(*name).is_some_and(|&v| v as u64 == property));
+        let is_color =
+            COLORS.iter().any(|name| self.tables.constants.get(*name).is_some_and(|&v| v as u64 == property));
         let value = if is_color {
             // lv_color_t with 32 bit depth: blue, green, red, alpha.
             let (r, g, b) = ((raw >> 16) & 0xFF, (raw >> 8) & 0xFF, raw & 0xFF);
@@ -403,7 +440,12 @@ impl Interpreter {
 
     /// An address of LVGL by name (functions used as callbacks, fonts).
     pub fn symbol(&self, name: &str) -> Option<usize> {
-        self.symbols.get(name).copied()
+        self.symbols.get(name).or_else(|| self.tables.symbols.get(name)).copied()
+    }
+
+    /// The name of a function in this release (`lv_obj_del` became `lv_obj_delete` in LVGL 9).
+    pub fn api(&self, v8: &'static str, v9: &'static str) -> &'static str {
+        if self.tables.v9 { v9 } else { v8 }
     }
 
     /// Makes `&name` resolve to a static image descriptor.
@@ -727,7 +769,7 @@ impl Interpreter {
                 let Tok::Ident(name) = tokens.get(*at)? else { return None };
                 *at += 1;
                 // The address of a font of LVGL; generated assets are not available.
-                self.symbols.get(name).map(|&a| a as Word)
+                self.symbol(name).map(|a| a as Word)
             }
             Tok::Punct('(') => {
                 // A cast `(type)value`, otherwise a parenthesized expression.
@@ -766,10 +808,10 @@ impl Interpreter {
                 match name.as_str() {
                     "NULL" | "false" => Some(0),
                     "true" => Some(1),
-                    "LV_FONT_DEFAULT" => self.symbols.get("lv_font_montserrat_14").map(|&a| a as Word),
+                    "LV_FONT_DEFAULT" => self.symbol("lv_font_montserrat_14").map(|a| a as Word),
                     _ => self
                         .lookup(&name)
-                        .or_else(|| self.constants.get(&name).map(|&v| v as Word))
+                        .or_else(|| self.tables.constants.get(&name).map(|&v| v as Word))
                         .or_else(|| self.indexed(&name, tokens, at)),
                 }
             }
@@ -837,7 +879,7 @@ impl Interpreter {
                 args.push(self.eval_tokens(part)?);
             }
         }
-        if name == "lv_pct" {
+        if name == "lv_pct" && !self.tables.v9 {
             // LV_PCT: a percentage is stored with the "special" bit.
             let value = args.first().copied().unwrap_or(0) as i64;
             let spec = 1_i64 << 13;
@@ -852,7 +894,7 @@ impl Interpreter {
         }
         if let Some(only) = &self.only_screen {
             if (name.ends_with("_screen_init") && name != only)
-                || matches!(name, "lv_disp_load_scr" | "lv_scr_load" | "_ui_screen_change")
+                || matches!(name, "lv_disp_load_scr" | "lv_scr_load" | "lv_screen_load" | "_ui_screen_change")
             {
                 return Some(0);
             }
@@ -860,7 +902,7 @@ impl Interpreter {
         if self.functions.contains_key(name) {
             return self.call(name, &args);
         }
-        let address = *self.lvgl_functions.get(name)?;
+        let address = *self.tables.functions.get(name)?;
         if std::env::var_os("LVGLAB_TRACE").is_some() {
             eprintln!("{name}({args:x?})");
         }

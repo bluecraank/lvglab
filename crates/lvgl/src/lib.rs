@@ -15,7 +15,7 @@ use std::sync::Mutex;
 
 use lvglab_model::Project;
 
-pub use interp::Interpreter;
+pub use interp::{Interpreter, Tables};
 
 /// A rendered screen: `width` × `height` pixels, RGBA, row by row.
 pub struct Frame {
@@ -32,11 +32,14 @@ pub struct Frame {
 /// LVGL has global state, so only one render runs at a time. The value is the
 /// size of the display and the empty screen that stays loaded between renders.
 static LVGL: Mutex<Option<((i32, i32), usize)>> = Mutex::new(None);
+/// The same for LVGL 9, which is a separate library in the same program.
+static LVGL9: Mutex<Option<((i32, i32), usize)>> = Mutex::new(None);
 
 type Cache<T> = Mutex<Option<HashMap<u64, Vec<T>>>>;
 
 static IMAGES: Cache<assets::Image> = Mutex::new(None);
 static FONTS: Cache<fonts::Font> = Mutex::new(None);
+static IMAGES9: Cache<assets::Image9> = Mutex::new(None);
 
 /// Parses each generated file once: images and fonts are large tables of
 /// numbers that rarely change, while the preview renders on every edit.
@@ -67,12 +70,9 @@ fn is_code(path: &str) -> bool {
         && name != "ui_helpers.c"
 }
 
-/// Renders screen number `index` of the project with LVGL. Only projects for
-/// LVGL 8 are supported.
+/// Renders screen number `index` of the project with the LVGL release the
+/// project is made for: LVGL 8.3, or LVGL 9.6 for all LVGL 9 projects.
 pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>) -> Result<Frame, String> {
-    if project.lvgl_version.is_v9() {
-        return Err("the LVGL preview supports LVGL 8 projects only".to_owned());
-    }
     let output = lvglab_codegen::generate_ui(project, project_dir);
     let screen_init =
         screen_init_names(&output).get(index).cloned().ok_or_else(|| "this screen has no generated code".to_owned())?;
@@ -82,6 +82,9 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
         count
     });
     let (width, height) = (project.display.width as i32, project.display.height as i32);
+    if project.lvgl_version.is_v9() {
+        return render_v9(&output, screen_init, expected, width, height);
+    }
     let mut state = LVGL.lock().map_err(|_| "LVGL is busy".to_owned())?;
     // SAFETY: LVGL is only used while the lock above is held.
     unsafe {
@@ -91,7 +94,7 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
         if state.is_none_or(|(size, _)| size != (width, height)) {
             *state = Some(((width, height), 0));
         }
-        let mut interpreter = Interpreter::new();
+        let mut interpreter = Interpreter::new(Tables::v8());
         for file in output.files.iter().filter(|f| is_code(&f.path)) {
             interpreter.load(file.contents_str());
         }
@@ -150,6 +153,117 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
     }
 }
 
+fn sources_of<'a>(output: &'a lvglab_codegen::Output, prefix: &str) -> Vec<&'a str> {
+    output
+        .files
+        .iter()
+        .filter(|f| f.path.rsplit('/').next().is_some_and(|n| n.starts_with(prefix) && n.ends_with(".c")))
+        .map(lvglab_codegen::GeneratedFile::contents_str)
+        .collect()
+}
+
+/// LVGL 9: the same steps with the names and structs of LVGL 9.
+fn render_v9(
+    output: &lvglab_codegen::Output,
+    screen_init: String,
+    expected: usize,
+    width: i32,
+    height: i32,
+) -> Result<Frame, String> {
+    let mut state = LVGL9.lock().map_err(|_| "LVGL is busy".to_owned())?;
+    // SAFETY: LVGL 9 is only used while the lock above is held. Fonts and
+    // images are freed after the objects that use them were deleted.
+    unsafe {
+        if ffi::lvglab9_init(width, height) == 0 {
+            return Err("out of memory".to_owned());
+        }
+        if state.is_none_or(|(size, _)| size != (width, height)) {
+            *state = Some(((width, height), 0));
+        }
+        let mut interpreter = Interpreter::new(Tables::v9());
+        for file in output.files.iter().filter(|f| is_code(&f.path)) {
+            interpreter.load(file.contents_str());
+        }
+        let images = parsed(&IMAGES9, &sources_of(output, "ui_img_"), 9, assets::parse_images_v9);
+        let mut handles = Vec::new();
+        for image in &images {
+            let handle = ffi::lvglab9_image_new(
+                image.cf,
+                image.width,
+                image.height,
+                image.stride,
+                image.data.as_ptr(),
+                image.data.len() as u32,
+            );
+            if !handle.is_null() {
+                interpreter.add_symbol(&image.name, handle as usize);
+                handles.push((handle, false));
+            }
+        }
+        let fonts = parsed(&FONTS, &sources_of(output, "ui_font_"), 0, |s| fonts::parse_fonts(&[s]));
+        for font in &fonts {
+            let (line_height, base_line, position, thickness, bpp) = font.metrics();
+            let handle = ffi::lvglab9_font_new(
+                font.bitmap().as_ptr(),
+                font.glyph_list.as_ptr(),
+                font.glyph_list.len() as u32,
+                font.cmap_list.as_ptr(),
+                font.cmap_list.len() as u32,
+                line_height,
+                base_line,
+                position,
+                thickness,
+                bpp,
+            );
+            if !handle.is_null() {
+                interpreter.add_symbol(&font.name, handle as usize);
+                handles.push((handle, true));
+            }
+        }
+        interpreter.only_screen = Some(screen_init);
+        interpreter.call("ui_init", &[]);
+        let screen = interpreter.screens.first().copied();
+        let result = match screen {
+            None => Err("the screen was not created".to_owned()),
+            Some(screen) => {
+                interpreter.call_lvgl("lv_screen_load", &[screen]);
+                let created = interpreter.count_objects(screen);
+                ffi::lvglab9_refresh();
+                let stride = ffi::lvglab9_stride().max(width * 4) as usize;
+                let pixels = std::slice::from_raw_parts(ffi::lvglab9_pixels(), stride * height as usize);
+                let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+                for row in pixels.chunks_exact(stride) {
+                    for p in row[..width as usize * 4].chunks_exact(4) {
+                        rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
+                    }
+                }
+                Ok((rgba, created))
+            }
+        };
+        // Show an empty screen, then free the objects, fonts and images of this render.
+        let blank = interpreter.call_lvgl("lv_obj_create", &[0]).unwrap_or(0);
+        interpreter.call_lvgl("lv_screen_load", &[blank]);
+        for screen in interpreter.screens.clone() {
+            interpreter.call_lvgl("lv_obj_delete", &[screen]);
+        }
+        if let Some(entry) = state.as_mut() {
+            let old = std::mem::replace(&mut entry.1, blank as usize);
+            if old != 0 {
+                interpreter.call_lvgl("lv_obj_delete", &[old as u64]);
+            }
+        }
+        for (handle, is_font) in handles {
+            if is_font {
+                ffi::lvglab9_font_free(handle);
+            } else {
+                ffi::lvglab9_image_free(handle);
+            }
+        }
+        let (rgba, created) = result?;
+        Ok(Frame { width: width as u32, height: height as u32, rgba, skipped: interpreter.skipped, created, expected })
+    }
+}
+
 /// Names of the `<screen>_screen_init` functions in the order of the screens.
 fn screen_init_names(output: &lvglab_codegen::Output) -> Vec<String> {
     let Some(ui) = output.files.iter().find(|f| f.path.ends_with("ui.c")) else { return Vec::new() };
@@ -201,6 +315,21 @@ mod tests {
         assert_eq!(at(30, 30), [255, 0, 0], "the button is red; skipped: {:?}", frame.skipped);
         assert_ne!(at(180, 90), [255, 0, 0]);
         // A second render works as well.
+        assert!(render_screen(&project(), 0, None).is_ok());
+    }
+
+    #[test]
+    fn lvgl_9_projects_render_with_lvgl_9() {
+        let mut p = project();
+        p.lvgl_version = lvglab_model::project::LvglVersion::V9_6_0;
+        let frame = render_screen(&p, 0, None).expect("rendered");
+        let at = |x: usize, y: usize| {
+            let i = (y * 200 + x) * 4;
+            [frame.rgba[i], frame.rgba[i + 1], frame.rgba[i + 2]]
+        };
+        assert_eq!(at(30, 30), [255, 0, 0], "the button is red; skipped: {:?}", frame.skipped);
+        assert_ne!(at(180, 90), [255, 0, 0]);
+        // LVGL 8 still works next to it.
         assert!(render_screen(&project(), 0, None).is_ok());
     }
 

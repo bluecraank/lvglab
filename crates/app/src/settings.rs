@@ -70,7 +70,7 @@ impl PreviewRenderer {
     pub fn label(self) -> &'static str {
         match self {
             Self::Editor => "Editor (fast)",
-            Self::Lvgl => "LVGL (exact, LVGL 8)",
+            Self::Lvgl => "LVGL (exact)",
         }
     }
 }

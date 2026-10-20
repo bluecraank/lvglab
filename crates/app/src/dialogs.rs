@@ -272,7 +272,7 @@ fn preferences(ctx: &egui::Context, studio: &mut Studio) {
                     label(
                         ui,
                         tr("Preview"),
-                        tr("LVGL runs the code of the export with the real library, so the canvas shows exactly what the device draws. Only for LVGL 8 projects; selection frames and the simulator still use the editor's drawing."),
+                        tr("LVGL runs the code of the export with the real library (LVGL 8.3, or 9.6 for LVGL 9 projects), so the canvas shows exactly what the device draws. Selection frames and the simulator still use the editor's drawing."),
                     );
                     widgets::choice(
                         ui,
