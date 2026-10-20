@@ -26,6 +26,14 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     let mut remove = None;
     let mut rename = None;
     let usage = font_usage(&studio.doc.project);
+    let families: HashMap<String, String> = studio
+        .doc
+        .project
+        .assets
+        .fonts
+        .iter()
+        .filter_map(|f| Some((f.name.clone(), studio.assets.asset_family(&f.name)?)))
+        .collect();
     for (index, font) in studio.doc.project.assets.fonts.iter_mut().enumerate() {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -73,9 +81,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
                 ui.text_edit_singleline(&mut font.symbols);
                 ui.end_row();
             });
-            let family = egui::FontFamily::Name(font.name.as_str().into());
-            let available = ui.fonts(|f| f.families().contains(&family));
-            if available {
+            if let Some(family) = families.get(&font.name).map(|f| egui::FontFamily::Name(f.as_str().into())) {
                 ui.label(
                     RichText::new("AaBbCc 0123 äöü °C").font(egui::FontId::new(f32::from(font.size).min(40.0), family)),
                 );

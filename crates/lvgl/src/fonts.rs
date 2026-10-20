@@ -4,6 +4,7 @@
 //! with them like on the device.
 
 /// A font with the memory LVGL reads it from.
+#[derive(Clone)]
 pub struct Font {
     pub name: String,
     bitmap: Vec<u8>,

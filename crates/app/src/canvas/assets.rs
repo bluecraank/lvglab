@@ -59,11 +59,16 @@ impl AssetCache {
         if let Some(size) = builtin_font_size(font) {
             return f32::from(builtin_font_line_height(size).unwrap_or(size));
         }
-        if let Some(height) = self.fonts.line_heights.get(font) {
-            return *height;
+        if let Some(height) = self.fonts.line_height(font) {
+            return height;
         }
         let (_, size) = self.font_family(project, font);
         (size * 1.2).ceil()
+    }
+
+    /// The egui family that draws a font asset, once it is ready.
+    pub fn asset_family(&self, font: &str) -> Option<String> {
+        self.fonts.family(font).map(str::to_owned)
     }
 
     /// egui font for an LVGL font name at `scale` screen points per pixel.
@@ -77,8 +82,7 @@ impl AssetCache {
             return (FontFamily::Proportional, f32::from(size));
         }
         if let Some(asset) = project.assets.font(font) {
-            let family =
-                if self.fonts.active.contains(font) { FontFamily::Name(font.into()) } else { FontFamily::Proportional };
+            let family = self.fonts.family(font).map_or(FontFamily::Proportional, |f| FontFamily::Name(f.into()));
             return (family, f32::from(asset.size.max(1)));
         }
         let digits: String = font.chars().filter(char::is_ascii_digit).collect();
@@ -96,14 +100,26 @@ fn load_texture(ctx: &egui::Context, path: &Path) -> Option<Texture> {
 
 /// Registers TTF assets as egui font families. New fonts become usable one
 /// frame after `set_fonts`, so families are only used once active.
+///
+/// Fonts stay registered when another project is shown (tabs): rebuilding
+/// egui's fonts is slow, so it only happens when a font is new.
 #[derive(Default)]
 struct FontManager {
-    /// Loaded fonts: name → (file, size, ranges, symbols).
-    loaded: BTreeMap<String, FontKey>,
-    /// LVGL line height of each loaded font at its asset size.
-    line_heights: HashMap<String, f32>,
+    /// Every font registered so far.
+    loaded: HashMap<FontKey, LoadedFont>,
+    /// The fonts of the shown project: name → key.
+    names: BTreeMap<String, FontKey>,
+    /// egui families that can be used.
     active: HashSet<String>,
     pending: Option<HashSet<String>>,
+}
+
+struct LoadedFont {
+    /// Unique egui family (two projects may use one name for different files).
+    family: String,
+    /// LVGL line height at the asset size.
+    line_height: Option<f32>,
+    data: std::sync::Arc<FontData>,
 }
 
 impl FontManager {
@@ -111,6 +127,16 @@ impl FontManager {
         if let Some(pending) = self.pending.take() {
             self.active = pending;
         }
+    }
+
+    fn line_height(&self, name: &str) -> Option<f32> {
+        self.loaded.get(self.names.get(name)?)?.line_height
+    }
+
+    /// The egui family of a font asset, once egui can draw it.
+    fn family(&self, name: &str) -> Option<&str> {
+        let font = self.loaded.get(self.names.get(name)?)?;
+        self.active.contains(&font.family).then_some(font.family.as_str())
     }
 
     fn sync(&mut self, ctx: &egui::Context, project: &Project, dir: Option<&Path>) {
@@ -123,35 +149,49 @@ impl FontManager {
                 (f.name.clone(), (Project::resolve_path(dir, &f.path), f.size, f.ranges.clone(), f.symbols.clone()))
             })
             .collect();
-        if wanted == self.loaded {
+        if wanted == self.names {
             return;
         }
-        let mut definitions = FontDefinitions::default();
-        let fallback = definitions.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
-        let mut names = HashSet::new();
-        self.line_heights.clear();
-        for (name, (path, size, ranges, symbols)) in &wanted {
+        let mut added = false;
+        for (name, key) in &wanted {
+            if self.loaded.contains_key(key) {
+                continue;
+            }
+            let (path, size, ranges, symbols) = key;
             let Ok(bytes) = std::fs::read(path) else { continue };
             let metrics = lvglab_codegen::font::metrics_from_bytes(&bytes, *size, ranges, symbols);
-            if let Some(metrics) = metrics {
-                self.line_heights.insert(name.clone(), metrics.line_height as f32);
-            }
-            let key = format!("asset:{name}");
             // The baseline below the top of the line, in fractions of the size.
             let baseline = metrics.map(|m| (m.line_height - m.base_line) as f32 / f32::from((*size).max(1)));
             let tweak = match (lvglab_codegen::font::em_metrics(&bytes), baseline) {
                 (Some((a, d)), Some(b)) => lvgl_tweak(a, d, b),
                 _ => FontTweak::default(),
             };
-            definitions.font_data.insert(key.clone(), FontData::from_owned(bytes).tweak(tweak).into());
+            let family = format!("{name}#{}", self.loaded.len());
+            let loaded = LoadedFont {
+                family,
+                line_height: metrics.map(|m| m.line_height as f32),
+                data: std::sync::Arc::new(FontData::from_owned(bytes).tweak(tweak)),
+            };
+            self.loaded.insert(key.clone(), loaded);
+            added = true;
+        }
+        self.names = wanted;
+        if !added {
+            return;
+        }
+        let mut definitions = FontDefinitions::default();
+        let fallback = definitions.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+        let mut families = HashSet::new();
+        for font in self.loaded.values() {
+            let key = format!("asset:{}", font.family);
+            definitions.font_data.insert(key.clone(), font.data.clone());
             let mut chain = vec![key];
             chain.extend(fallback.iter().cloned());
-            definitions.families.insert(FontFamily::Name(name.as_str().into()), chain);
-            names.insert(name.clone());
+            definitions.families.insert(FontFamily::Name(font.family.as_str().into()), chain);
+            families.insert(font.family.clone());
         }
         ctx.set_fonts(definitions);
-        self.loaded = wanted;
-        self.pending = Some(names);
+        self.pending = Some(families);
     }
 }
 

@@ -8,6 +8,8 @@ mod ffi;
 mod fonts;
 mod interp;
 
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -30,6 +32,30 @@ pub struct Frame {
 /// LVGL has global state, so only one render runs at a time. The value is the
 /// size of the display and the empty screen that stays loaded between renders.
 static LVGL: Mutex<Option<((i32, i32), usize)>> = Mutex::new(None);
+
+type Cache<T> = Mutex<Option<HashMap<u64, Vec<T>>>>;
+
+static IMAGES: Cache<assets::Image> = Mutex::new(None);
+static FONTS: Cache<fonts::Font> = Mutex::new(None);
+
+/// Parses each generated file once: images and fonts are large tables of
+/// numbers that rarely change, while the preview renders on every edit.
+fn parsed<T: Clone>(cache: &Cache<T>, sources: &[&str], salt: u64, parse: impl Fn(&str) -> Vec<T>) -> Vec<T> {
+    let mut out = Vec::new();
+    let Ok(mut guard) = cache.lock() else { return sources.iter().flat_map(|s| parse(s)).collect() };
+    let map = guard.get_or_insert_with(HashMap::new);
+    if map.len() > 256 {
+        map.clear();
+    }
+    for source in sources {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        source.hash(&mut hasher);
+        salt.hash(&mut hasher);
+        let key = hasher.finish();
+        out.extend(map.entry(key).or_insert_with(|| parse(source)).iter().cloned());
+    }
+    out
+}
 
 /// Files of the export that are of no use to the preview (assets, callbacks).
 fn is_code(path: &str) -> bool {
@@ -75,7 +101,9 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
             .filter(|f| f.path.rsplit('/').next().is_some_and(|n| n.starts_with("ui_img_") && n.ends_with(".c")))
             .map(lvglab_codegen::GeneratedFile::contents_str)
             .collect();
-        let mut images = assets::parse_images(&sources, project.export.swap_bytes);
+        let mut images = parsed(&IMAGES, &sources, u64::from(project.export.swap_bytes), |s| {
+            assets::parse_images(&[s], project.export.swap_bytes)
+        });
         for image in &mut images {
             let address = image.address();
             interpreter.add_symbol(&image.name, address);
@@ -86,7 +114,7 @@ pub fn render_screen(project: &Project, index: usize, project_dir: Option<&Path>
             .filter(|f| f.path.rsplit('/').next().is_some_and(|n| n.starts_with("ui_font_") && n.ends_with(".c")))
             .map(lvglab_codegen::GeneratedFile::contents_str)
             .collect();
-        let mut fonts = fonts::parse_fonts(&font_sources);
+        let mut fonts = parsed(&FONTS, &font_sources, 0, |s| fonts::parse_fonts(&[s]));
         if let (Some(glyph_dsc), Some(glyph_bitmap)) =
             (interpreter.symbol("lv_font_get_glyph_dsc_fmt_txt"), interpreter.symbol("lv_font_get_bitmap_fmt_txt"))
         {

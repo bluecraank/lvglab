@@ -1272,6 +1272,61 @@ mod tests {
         assert!(app.studio.screen_clip.is_some() && app.studio.clipboard.is_none());
     }
 
+    /// Timing of tab switches and LVGL preview frames:
+    /// `LVGLAB_BENCH=a.lvglab;b.lvglab cargo test --release -p lvglab bench_frames -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_frames() {
+        let Ok(files) = std::env::var("LVGLAB_BENCH") else { return };
+        let ctx = egui::Context::default();
+        let frame = |app: &mut StudioApp| {
+            let start = std::time::Instant::now();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1440.0, 900.0))),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| app.run_frame_for_test(ctx));
+            start.elapsed()
+        };
+        for renderer in [crate::settings::PreviewRenderer::Editor, crate::settings::PreviewRenderer::Lvgl] {
+            let settings = AppSettings { tour_done: true, preview_renderer: renderer, ..AppSettings::default() };
+            let mut app = StudioApp::for_test(Studio::new(settings));
+            app.studio.start_page = None;
+            for file in files.split(';') {
+                app.studio.execute(Command::OpenPath(file.into()), true);
+            }
+            for _ in 0..5 {
+                frame(&mut app);
+            }
+            eprintln!("tabs: {} ({:?})", app.studio.tab_count(), app.studio.status);
+            for round in 0..3 {
+                for tab in 0..app.studio.tab_count() {
+                    app.studio.execute(Command::SwitchTab(tab), false);
+                    let first = frame(&mut app);
+                    let second = frame(&mut app);
+                    eprintln!("{renderer:?} round {round} tab {tab}: {first:?} then {second:?}");
+                }
+            }
+            // A color change on every frame, like dragging in the color picker.
+            app.studio.execute(Command::SwitchTab(0), false);
+            frame(&mut app);
+            let id = app.studio.doc.project.screens[0].id;
+            let mut total = std::time::Duration::ZERO;
+            for i in 0..10_u32 {
+                if let Some(screen) = app.studio.doc.project.widget_mut(id) {
+                    screen.styles.set(
+                        "main",
+                        lvglab_model::flags::StateMask::DEFAULT,
+                        lvglab_model::style::StyleProp::BgColor,
+                        lvglab_model::style::StyleValue::Color(lvglab_model::Color::from_hex(0x101010 * (i % 15))),
+                    );
+                }
+                total += frame(&mut app);
+            }
+            eprintln!("{renderer:?} color drag: {:?} per frame", total / 10);
+        }
+    }
+
     #[test]
     fn cancelled_start_page_actions_return_to_the_start_page() {
         crate::sandbox::enable();
