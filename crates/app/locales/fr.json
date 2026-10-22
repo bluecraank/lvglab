@@ -351,6 +351,7 @@
   "LVGL 9 has no color wheel; an empty object is created.": "LVGL 9 n'a pas de roue chromatique ; un objet vide est créé.",
   "LVGL 9 has no meter and no color wheel; the export reports what it changes.": "LVGL 9 n'a ni jauge ni roue chromatique ; l'export signale ce qu'il adapte.",
   "LVGL 9 has no meter; it is exported as lv_scale with a needle line.": "LVGL 9 n'a pas de jauge ; elle est exportée comme lv_scale avec une aiguille.",
+  "LVGL 9.6 deprecated this widget and a later release removes it; prefer a container with a flex layout.": "LVGL 9.6 a rendu ce widget obsolète et une version ultérieure le supprimera ; préférez un conteneur avec une disposition flex.",
   "LVGL 9 swaps the bytes in the flush callback of the display driver, e.g. with lv_draw_sw_rgb565_swap().": "LVGL 9 inverse les octets dans le callback flush du pilote d'affichage, p. ex. avec lv_draw_sw_rgb565_swap().",
   "LVGL preview not available:": "Aperçu LVGL indisponible :",
   "LVGL runs the code of the export with the real library (LVGL 8.3, or 9.6 for LVGL 9 projects), so the canvas shows exactly what the device draws. Selection frames and the simulator still use the editor's drawing.": "LVGL exécute le code de l'export avec la vraie bibliothèque (LVGL 8.3, ou 9.6 pour les projets LVGL 9) : le canevas montre exactement ce que dessine l'appareil. Les cadres de sélection et le simulateur utilisent toujours le dessin de l'éditeur.",
