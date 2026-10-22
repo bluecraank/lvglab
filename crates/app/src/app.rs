@@ -66,6 +66,8 @@ pub struct Studio {
     pub tour_pending: bool,
     /// The open start page with the recent projects.
     pub start_page: Option<Vec<crate::start::Entry>>,
+    /// Recovery copies of unsaved projects a crash left behind; the start page offers them.
+    pub recovered: Vec<crate::recovery::Found>,
     /// The open merge wizard.
     pub merge: Option<crate::merge_dialog::MergeWizard>,
     /// The timeline shows only the steps that changed the current screen.
@@ -206,6 +208,7 @@ impl Studio {
             tour: None,
             tour_pending: false,
             start_page: None,
+            recovered: Vec::new(),
             merge: None,
             search: None,
             lvgl_preview: Default::default(),
@@ -389,6 +392,9 @@ impl StudioApp {
             _ => {}
         }
         let mut studio = Studio::new(settings);
+        if options.screenshot.is_none() {
+            studio.recovered = crate::recovery::found();
+        }
         let dialog = options.dialog.as_deref();
         let files = if options.files.is_empty() { reopen.into_iter().collect() } else { options.files.clone() };
         match files.first().cloned() {
@@ -404,6 +410,10 @@ impl StudioApp {
                 studio.start_page = Some(crate::start::entries(&studio.settings.recent));
             }
             None => {}
+        }
+        // Unsaved work a crash left behind is offered even if a project was reopened.
+        if !studio.recovered.is_empty() && studio.start_page.is_none() && dialog.is_none() {
+            studio.start_page = Some(crate::start::entries(&studio.settings.recent));
         }
         if let Some(name) = options.select {
             let id = studio.doc.project.all_widgets().iter().find(|w| w.name == name).map(|w| w.id);
@@ -489,7 +499,10 @@ impl StudioApp {
             return;
         }
         self.last_autosave = now;
-        let Some(path) = self.studio.doc.path.clone() else { return };
+        let Some(path) = self.studio.doc.path.clone() else {
+            self.studio.save_recovery();
+            return;
+        };
         if self.studio.settings.autosave_project {
             self.studio.save_to(path, crate::document::EntryKind::Autosaved);
             return;
@@ -939,6 +952,11 @@ impl eframe::App for StudioApp {
         eframe::set_value(storage, STORAGE_KEY, &self.studio.settings);
         eframe::set_value(storage, DOCK_KEY, &self.dock);
     }
+
+    /// A regular quit: unsaved changes were saved or discarded on purpose.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.studio.discard_all_recoveries();
+    }
 }
 
 #[cfg(test)]
@@ -1310,6 +1328,69 @@ mod tests {
         app.studio.select(Some(screen));
         frame(&mut app, Some(egui::Event::Copy));
         assert!(app.studio.screen_clip.is_some() && app.studio.clipboard.is_none());
+    }
+
+    #[test]
+    fn unsaved_projects_survive_a_crash_as_recovery_copies() {
+        crate::sandbox::enable();
+        let dir = std::env::temp_dir().join(format!("lvglab-recovery-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::recovery::use_dir_for_test(&dir);
+        let ctx = egui::Context::default();
+        let frame = |app: &mut StudioApp, time: f64| {
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let _ = ctx.run(input, |ctx| app.run_frame_for_test(ctx));
+        };
+        let new_app = || {
+            let mut studio = Studio::new(AppSettings { tour_done: true, ..AppSettings::default() });
+            studio.start_page = None;
+            StudioApp::for_test(studio)
+        };
+
+        // A project that was never saved gets a recovery copy on autosave.
+        let mut app = new_app();
+        let screen = app.studio.screen;
+        let button = app.studio.doc.project.new_widget(lvglab_model::WidgetKind::Button);
+        app.studio.doc.project.insert(screen, 0, button).unwrap();
+        app.studio.doc.project.name = "Lost".into();
+        frame(&mut app, 1.0);
+        frame(&mut app, 1000.0);
+        let copy = app.studio.doc.recovery.clone().expect("autosave wrote a recovery copy");
+        assert!(copy.exists());
+        let project = app.studio.doc.project.clone();
+        drop(app); // The crash: nothing cleans up.
+
+        // The next start offers it; restoring brings the project back unsaved.
+        let found = crate::recovery::found();
+        assert_eq!(found.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["Lost"]);
+        let mut app = new_app();
+        app.studio.recovered = found;
+        app.studio.execute(Command::RestoreRecovery(copy.clone()), true);
+        assert_eq!(app.studio.doc.project, project);
+        assert!(app.studio.doc.path.is_none() && app.studio.doc.is_dirty());
+        assert!(app.studio.recovered.is_empty());
+        // Saving removes the copy.
+        let file = dir.join("Lost.lvglab");
+        app.studio.save_to(file.clone(), crate::document::EntryKind::Saved);
+        assert!(file.exists() && !copy.exists());
+
+        // Closing the tab or quitting removes a copy too.
+        let mut app = new_app();
+        app.studio.save_recovery();
+        let copy = app.studio.doc.recovery.clone().unwrap();
+        assert!(copy.exists());
+        app.studio.close_tab(0);
+        assert!(!copy.exists());
+        app.studio.save_recovery();
+        let copy = app.studio.doc.recovery.clone().unwrap();
+        app.studio.discard_all_recoveries();
+        assert!(!copy.exists());
+        // Discarding from the start page deletes it.
+        app.studio.save_recovery();
+        let copy = app.studio.doc.recovery.clone().unwrap();
+        app.studio.execute(Command::DiscardRecovery(copy.clone()), true);
+        assert!(!copy.exists());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Issue #1: deleting a component closed the editor.

@@ -72,6 +72,9 @@ pub enum Command {
     MergeProjectPath(PathBuf),
     Open,
     OpenPath(PathBuf),
+    /// Opens a recovery copy left by a crash as unsaved project.
+    RestoreRecovery(PathBuf),
+    DiscardRecovery(PathBuf),
     ImportSquareLine,
     ImportSquareLinePath(PathBuf),
     Save,
@@ -186,6 +189,11 @@ impl Studio {
                 }
             }
             Command::OpenPath(path) => self.open(path),
+            Command::RestoreRecovery(path) => self.restore_recovery(path),
+            Command::DiscardRecovery(path) => {
+                crate::recovery::remove(&path);
+                self.recovered.retain(|f| f.path != path);
+            }
             Command::ImportSquareLine => {
                 if let Some(path) = self.file_dialog().add_filter("SquareLine Studio", &["spj"]).pick_file() {
                     self.execute(Command::ImportSquareLinePath(path), true);
@@ -314,6 +322,32 @@ impl Studio {
                 self.remove_unsupported(false);
             }
             Err(err) => self.show_error(tr("Open failed"), err.to_string()),
+        }
+    }
+
+    fn restore_recovery(&mut self, path: PathBuf) {
+        self.recovered.retain(|f| f.path != path);
+        match Project::load(&path) {
+            Ok(project) => {
+                let mut doc = Document::new(project, None);
+                doc.mark_unsaved();
+                // Autosave keeps writing the same copy until the project is saved.
+                doc.recovery = Some(path);
+                self.load_document(doc, tr("Restored"));
+                self.notify(tr("Restored the unsaved project — save it to keep it."));
+            }
+            Err(err) => self.show_error(tr("Open failed"), err.to_string()),
+        }
+    }
+
+    /// Writes the recovery copy of a project that has no file yet.
+    pub fn save_recovery(&mut self) {
+        if self.doc.recovery.is_none() {
+            self.doc.recovery = crate::recovery::new_path();
+        }
+        let Some(path) = self.doc.recovery.clone() else { return };
+        if let Err(err) = crate::recovery::save(&path, &self.doc.project) {
+            self.notify(trf("The recovery copy could not be saved: {}", &[&err]));
         }
     }
 

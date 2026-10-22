@@ -906,5 +906,12 @@
   "{}: style {} removed": "{} : style {} supprimé",
   "{}: styles of the part {} removed": "{} : styles de la partie {} supprimés",
   "{}: widget removed ({})": "{} : widget supprimé ({})",
-  "{}: {} reset": "{} : {} réinitialisé"
+  "{}: {} reset": "{} : {} réinitialisé",
+  "Unsaved projects": "Projets non enregistrés",
+  "LVGLab was closed unexpectedly. These projects were never saved.": "LVGLab s'est fermé de façon inattendue. Ces projets n'ont jamais été enregistrés.",
+  "Discard": "Supprimer",
+  "Restore": "Restaurer",
+  "Restored": "Restauré",
+  "Restored the unsaved project — save it to keep it.": "Projet non enregistré restauré — enregistrez-le pour le conserver.",
+  "The recovery copy could not be saved: {}": "La copie de récupération n'a pas pu être enregistrée : {}"
 }

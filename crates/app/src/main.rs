@@ -17,6 +17,7 @@ mod modal;
 mod monkey;
 mod panels;
 mod recorder;
+mod recovery;
 mod sandbox;
 mod screenshots;
 mod search_dialog;
