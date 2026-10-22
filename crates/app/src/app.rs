@@ -1312,6 +1312,47 @@ mod tests {
         assert!(app.studio.screen_clip.is_some() && app.studio.clipboard.is_none());
     }
 
+    /// Issue #1: deleting a component closed the editor.
+    #[test]
+    fn deleting_a_component_keeps_the_editor_running() {
+        crate::sandbox::enable();
+        let ctx = egui::Context::default();
+        let frame = |app: &mut StudioApp, event: Option<egui::Event>| {
+            let mut input = egui::RawInput::default();
+            input.events.extend(event);
+            let _ = ctx.run(input, |ctx| app.run_frame_for_test(ctx));
+        };
+        let mut studio = Studio::new(AppSettings { tour_done: true, ..AppSettings::default() });
+        studio.start_page = None;
+        let mut app = StudioApp::for_test(studio);
+        frame(&mut app, None);
+        app.studio.push(crate::commands::Command::AddComponent);
+        frame(&mut app, None);
+        frame(&mut app, None);
+        let component = app.studio.doc.project.components[0].id;
+        assert_eq!(app.studio.screen, component, "the new component is open");
+        // An instance on the screen outlives the deleted component.
+        let project = &mut app.studio.doc.project;
+        let name = project.widget(component).unwrap().name.clone();
+        let mut instance = project.new_widget(lvglab_model::WidgetKind::Component);
+        instance.set_prop("component", lvglab_model::prop::PropValue::Text(name));
+        let screen = project.screens[0].id;
+        project.insert(screen, 0, instance).unwrap();
+        let delete = egui::Event::Key {
+            key: egui::Key::Delete,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&mut app, Some(delete));
+        for _ in 0..3 {
+            frame(&mut app, None);
+        }
+        assert!(app.studio.doc.project.components.is_empty(), "the component is gone");
+        assert_eq!(app.studio.screen, app.studio.doc.project.screens[0].id, "back on the screen");
+    }
+
     /// Timing of tab switches and LVGL preview frames:
     /// `LVGLAB_BENCH=a.lvglab;b.lvglab cargo test --release -p lvglab bench_frames -- --ignored --nocapture`
     #[test]
