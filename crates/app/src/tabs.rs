@@ -111,10 +111,23 @@ impl Studio {
         self.active_tab = index;
     }
 
+    /// Removes the recovery copies of all open projects.
+    pub fn discard_all_recoveries(&mut self) {
+        self.doc.discard_recovery();
+        for workspace in self.tabs.iter_mut().flatten() {
+            workspace.doc.discard_recovery();
+        }
+    }
+
     /// Closes a tab; the last one is replaced by an empty project and the start page.
     pub fn close_tab(&mut self, index: usize) {
         if index >= self.tab_count() {
             return;
+        }
+        if index == self.active_tab {
+            self.doc.discard_recovery();
+        } else if let Some(workspace) = self.tabs.get_mut(index).and_then(Option::as_mut) {
+            workspace.doc.discard_recovery();
         }
         if self.tab_count() == 1 {
             let project = lvglab_model::Project::new("MyProject");

@@ -53,6 +53,7 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
     let Some(entries) = &studio.start_page else { return };
     let mut chosen: Option<Command> = None;
     let mut remove: Option<PathBuf> = None;
+    let mut discard: Option<PathBuf> = None;
     let mut close = false;
     let palette = visuals::palette(ctx);
     let frame = Frame::new()
@@ -97,6 +98,31 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
             ui.add_space(24.0);
             // Recent projects.
             ui.vertical(|ui| {
+                if !studio.recovered.is_empty() {
+                    ui.label(RichText::new(tr("Unsaved projects")).strong().color(visuals::WARNING));
+                    ui.label(
+                        RichText::new(tr("LVGLab was closed unexpectedly. These projects were never saved."))
+                            .small()
+                            .color(palette.muted),
+                    );
+                    ui.add_space(4.0);
+                    for found in &studio.recovered {
+                        ui.horizontal(|ui| {
+                            let when = found.modified.map(crate::panels::ago).unwrap_or_default();
+                            ui.label(RichText::new(&found.name).strong());
+                            ui.label(RichText::new(when).small().color(palette.muted));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button(tr("Discard")).clicked() {
+                                    discard = Some(found.path.clone());
+                                }
+                                if ui.button(tr("Restore")).clicked() {
+                                    chosen = Some(Command::RestoreRecovery(found.path.clone()));
+                                }
+                            });
+                        });
+                    }
+                    ui.add_space(14.0);
+                }
                 ui.label(RichText::new(tr("Recent projects")).strong());
                 ui.add_space(6.0);
                 if entries.is_empty() {
@@ -120,6 +146,9 @@ pub fn show(ctx: &egui::Context, studio: &mut Studio) {
     });
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         close = true;
+    }
+    if let Some(path) = discard {
+        studio.push(Command::DiscardRecovery(path));
     }
     if let Some(path) = remove {
         studio.settings.recent.retain(|p| p != &path);
