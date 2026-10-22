@@ -15,12 +15,14 @@ pub use timeline_file::path_for as timeline_path;
 pub struct Document {
     pub project: Project,
     pub path: Option<PathBuf>,
+    /// Recovery copy that autosave writes while the project has no file yet.
+    pub recovery: Option<PathBuf>,
     saved: Project,
 }
 
 impl Document {
     pub fn new(project: Project, path: Option<PathBuf>) -> Self {
-        Self { saved: project.clone(), project, path }
+        Self { saved: project.clone(), project, path, recovery: None }
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -30,6 +32,14 @@ impl Document {
     pub fn mark_saved(&mut self, path: PathBuf) {
         self.saved = self.project.clone();
         self.path = Some(path);
+        self.discard_recovery();
+    }
+
+    /// Removes the recovery copy, e.g. once the project is saved or closed.
+    pub fn discard_recovery(&mut self) {
+        if let Some(path) = self.recovery.take() {
+            crate::recovery::remove(&path);
+        }
     }
 
     /// Marks the current state as unsaved (e.g. after an import).
