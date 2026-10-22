@@ -95,7 +95,8 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Search** (Ctrl+F, Edit → Find…): finds widgets by name or type and also property values, local styles
   (colors, fonts, images, theme colors), events and flags on all screens and components. Several words
   narrow the result (`label title`, `F15C00`, `on_go`). Arrow keys and Enter or a click open the hit.
-- **Autosave** of saved projects (default every 2 minutes, configurable).
+- **Autosave** of saved projects (default every 2 minutes, configurable). Projects that were never saved get a
+  recovery copy instead; if LVGLab is closed unexpectedly, the start page offers to restore them.
 - Layers with drag & drop reordering and reparenting, visibility toggle, filtering and context menu.
   Ctrl+click adds rows to the selection, Shift+click selects the range up to the clicked row, and dragging a
   selected row into a container moves the whole selection.
