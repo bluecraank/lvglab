@@ -142,7 +142,11 @@ fn tokenize(source: &str) -> Vec<Tok> {
             while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
                 i += 1;
             }
-            tokens.push(Tok::Ident(chars[start..i].iter().collect()));
+            let ident: String = chars[start..i].iter().collect();
+            // Pragma macros around deprecated LVGL 9 widgets; they expand to no code.
+            if !matches!(ident.as_str(), "LV_DEPRECATIONS_IGNORE_BEGIN" | "LV_DEPRECATIONS_IGNORE_END") {
+                tokens.push(Tok::Ident(ident));
+            }
         } else if c.is_ascii_digit() {
             line_start = false;
             let start = i;

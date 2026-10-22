@@ -125,7 +125,7 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
   `ui_object_set_themeable_style_property`, `ui____initial_actions0`).
 - Configurable symbol prefix (`ui`, `sett`, …) for several UI libraries in one firmware.
 - Multi-language texts with [lv_i18n](https://github.com/lvgl/lv_i18n) (`_("text")`, `ui_relocalize()`).
-- LVGL 9: only the native API of the selected release, no deprecated aliases of renamed functions.
+- LVGL 9: only the native API of the selected release, no deprecated aliases of renamed functions and, for 9.6, no deprecated functions.
 - Byte-swapped images for `LV_COLOR_16_SWAP 1` with LVGL 8 (checked at compile time).
 - Images are converted to `lv_img_dsc_t` (LVGL 8) or `lv_image_dsc_t` (LVGL 9), RGB565 with an alpha
   channel when needed.
@@ -154,7 +154,7 @@ Montserrat fonts have no umlauts, which only the real library shows:
 | Component | Supported |
 |---|---|
 | Generated code | **LVGL 8.3.x** (8.3.0 – 8.3.11) and **LVGL 9.2 – 9.6**, chosen in the project settings. Every release is verified by compiling an export with every widget type (`-Wall -Wextra -Werror`; for LVGL 9 without the aliases of renamed functions). |
-| LVGL 9 differences | LVGL 9 has no meter and no color wheel: a meter is exported as `lv_scale` with a needle line, a color wheel as an empty object. Chart zoom and axis ticks, the styles `anim_speed` and `bg_dither_mode` and the blend mode *Replace* do not exist in LVGL 9 and are skipped. The export lists every change. While LVGL 9 is selected the editor hides the color wheel and these settings, and switching a project to LVGL 9 removes them (undo restores them). The canvas shows the look of the selected release. LVGL 9.6 marks `lv_list`, `lv_menu`, `lv_win` and `lv_obj_add_flag` as deprecated; the code builds with deprecation warnings. |
+| LVGL 9 differences | LVGL 9 has no meter and no color wheel: a meter is exported as `lv_scale` with a needle line, a color wheel as an empty object. Chart zoom and axis ticks, the styles `anim_speed` and `bg_dither_mode` and the blend mode *Replace* do not exist in LVGL 9 and are skipped. The export lists every change. While LVGL 9 is selected the editor hides the color wheel and these settings, and switching a project to LVGL 9 removes them (undo restores them). The canvas shows the look of the selected release. For LVGL 9.6 the export uses the APIs that replace the ones 9.6 deprecated: one setter per flag (`lv_obj_set_hidden()`, ... instead of `lv_obj_add_flag()`), the `text_align` style for span groups (their mode follows the size), so the code builds without deprecation warnings. `lv_list`, `lv_menu` and `lv_win` are deprecated in 9.6 as a whole; they still work, the export wraps them in `LV_DEPRECATIONS_IGNORE_BEGIN/END` and the palette points this out. |
 | Target | ESP32 family (ESP32, S2, S3, C3). The generated UI code is platform independent and works with any display driver. |
 | Color depth | Images are RGB565. LVGL 8 needs `LV_COLOR_DEPTH 16`; LVGL 9 converts images while drawing. |
 | SquareLine Studio import | `.spj` projects of SquareLine Studio 1.x (tested with editor 1.6.2 / LVGL 8.3.11). Projects for an LVGL 9 release LVGLab does not list (e.g. 9.1) target the nearest supported one. |
