@@ -87,19 +87,42 @@ pub struct V9 {
     pub note: &'static str,
     /// LVGL 9 has no such widget; the editor hides it.
     pub removed: bool,
+    /// First LVGL 9 minor release that marks the widget deprecated. The
+    /// export still uses it but silences the compiler warnings.
+    pub deprecated: Option<u8>,
 }
 
 impl V9 {
-    pub const SAME: Self =
-        Self { create: None, post_create: None, post_props: None, props: &[], note: "", removed: false };
+    pub const SAME: Self = Self {
+        create: None,
+        post_create: None,
+        post_props: None,
+        props: &[],
+        note: "",
+        removed: false,
+        deprecated: None,
+    };
 
-    pub fn prop(&self, key: &str) -> Option<&V9Prop> {
-        self.props.iter().find(|p| p.key == key)
+    /// Shown for widgets [`V9::deprecated`] in the selected release.
+    pub const DEPRECATED_NOTE: &'static str =
+        "LVGL 9.6 deprecated this widget and a later release removes it; prefer a container with a flex layout.";
+
+    /// The entry of `key` for LVGL 9.`minor`: the one with the latest
+    /// `since` the release has, else the first (not available yet).
+    pub fn prop(&self, key: &str, minor: u8) -> Option<&V9Prop> {
+        let entries = self.props.iter().filter(|p| p.key == key);
+        let first = entries.clone().next();
+        entries.filter(|p| p.since <= minor).max_by_key(|p| p.since).or(first)
+    }
+
+    pub fn is_deprecated(&self, minor: u8) -> bool {
+        self.deprecated.is_some_and(|since| minor >= since)
     }
 }
 
 /// How a property is emitted for LVGL 9. [`Emit::None`] marks a property
-/// LVGL 9 does not have.
+/// LVGL 9 does not have. A key may have several entries for releases that
+/// changed it again (see [`V9::prop`]).
 #[derive(Clone, Copy, Debug)]
 pub struct V9Prop {
     pub key: &'static str,
@@ -1128,6 +1151,17 @@ const SPANGROUP: WidgetDef = WidgetDef {
             .help("One span per line."),
     ],
     squareline: &["SPANGROUP"],
+    v9: V9 {
+        props: &[
+            // LVGL 9.6 aligns span groups with the text_align style and
+            // derives the mode from the size.
+            V9Prop::call("align", "lv_spangroup_set_align({obj}, {v});"),
+            V9Prop::call("align", "lv_obj_set_style_text_align({obj}, {v}, LV_PART_MAIN);").since(6),
+            V9Prop::call("mode", "lv_spangroup_set_mode({obj}, {v});"),
+            V9Prop::missing("mode").since(6),
+        ],
+        ..V9::SAME
+    },
     ..BASE
 };
 
@@ -1249,6 +1283,7 @@ const WIN: WidgetDef = WidgetDef {
     v9: V9 {
         create: Some("lv_win_create({parent})"),
         post_create: Some("lv_obj_set_height(lv_win_get_header({obj}), {header_height});"),
+        deprecated: Some(6),
         ..V9::SAME
     },
     ..BASE
@@ -1268,6 +1303,7 @@ const LIST: WidgetDef = WidgetDef {
         .emit(Emit::EachLine("lv_list_add_btn({obj}, NULL, {line});"))
         .not_empty()],
     squareline: &["LIST"],
+    v9: V9 { deprecated: Some(6), ..V9::SAME },
     ..BASE
 };
 
@@ -1297,6 +1333,7 @@ const MENU: WidgetDef = WidgetDef {
             .not_empty(),
     ],
     squareline: &["MENU"],
+    v9: V9 { deprecated: Some(6), ..V9::SAME },
     ..BASE
 };
 

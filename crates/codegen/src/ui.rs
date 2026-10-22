@@ -16,6 +16,7 @@ use std::fmt::Write as _;
 use lvglab_model::catalog::WidgetDef;
 use lvglab_model::compat;
 use lvglab_model::event::{Action, EventHandler, ModifyOp};
+use lvglab_model::flags::ObjFlag;
 use lvglab_model::layout::pixel_size;
 use lvglab_model::prop::{Emit, EmitWhen, PropDef, PropKind, PropValue};
 use lvglab_model::style::{Part, StyleProp, StyleValue};
@@ -399,6 +400,11 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
 
         self.init.blank();
         self.init.line(&format!("/* {}: {} */", def.name, comment(&widget.name)));
+        // Deprecated widgets still work; keep their calls from flooding the build with warnings.
+        let deprecated = self.ctx.target.is_v9() && def.v9.is_deprecated(self.ctx.target.minor);
+        if deprecated {
+            self.init.line("LV_DEPRECATIONS_IGNORE_BEGIN");
+        }
         for prop in def.props.iter().filter(|p| templates.uses(p.key)) {
             for prelude in &scope.props[prop.key].prelude {
                 self.init.line(prelude);
@@ -453,6 +459,9 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         let child_parent = def.child_parent.map_or_else(|| obj.clone(), |t| scope.expand(t));
         for child in &widget.children {
             self.widget(child, &child_parent);
+        }
+        if deprecated {
+            self.init.line("LV_DEPRECATIONS_IGNORE_END");
         }
     }
 
@@ -511,7 +520,7 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
         }
         let value = prop_value(widget, prop);
         let target = self.ctx.target;
-        let (emit, when) = match widget.def().v9.prop(prop.key).filter(|_| target.is_v9()) {
+        let (emit, when) = match widget.def().v9.prop(prop.key, target.minor).filter(|_| target.is_v9()) {
             Some(v9) if v9.emit == Emit::None || !target.v9_since(v9.since) => {
                 if value != prop.default_value() {
                     self.ctx.warnings.push(format!(
@@ -619,10 +628,17 @@ impl<'c, 'a> ScreenGen<'c, 'a> {
     }
 
     fn flags_and_states(&mut self, widget: &Widget, obj: &str) {
+        if self.ctx.target.v9_since(6) {
+            // LVGL 9.6 deprecated lv_obj_add_flag() and friends for one setter per flag.
+            for (flag, on) in &widget.flags {
+                self.init.line(&format!("lv_obj_set_{}({obj}, {on});", flag_name(*flag)));
+            }
+        }
         let collect = |on: bool| -> Vec<String> {
             widget.flags.iter().filter(|(_, v)| **v == on).map(|(f, _)| f.c_const()).collect()
         };
-        let (add, clear) = (collect(true), collect(false));
+        let (add, clear) =
+            if self.ctx.target.v9_since(6) { (Vec::new(), Vec::new()) } else { (collect(true), collect(false)) };
         if !add.is_empty() {
             self.init.line(&format!("lv_obj_add_flag({obj}, {});", add.join(" | ")));
         }
@@ -949,18 +965,56 @@ void _ui_screen_change(lv_obj_t ** target, lv_scr_load_anim_t fademode, int spd,
     header_file(project, &names.file("helpers.h"), &body)
 }
 
-fn helpers_c(project: &Project, names: &Naming) -> String {
-    format!(
-        "{}\n#include \"{}\"\n\n{}",
-        header(project),
-        names.file("helpers.h"),
-        prefixed(
-            "void _ui_flag_modify(lv_obj_t * target, int32_t flag, int value)\n{\n\
+/// `hidden` for `LV_OBJ_FLAG_HIDDEN`: LVGL 9.6 names the setter of the flag
+/// `lv_obj_set_hidden()` and its getter `lv_obj_is_hidden()`.
+fn flag_name(flag: ObjFlag) -> String {
+    flag.c_const().trim_start_matches("LV_OBJ_FLAG_").to_lowercase()
+}
+
+/// `_ui_flag_modify()`. From LVGL 9.6 on it picks the setter and getter of
+/// the flag, as LVGL deprecated `lv_obj_add_flag()` and friends.
+fn flag_modify(target: Target) -> String {
+    if !target.v9_since(6) {
+        return "void _ui_flag_modify(lv_obj_t * target, int32_t flag, int value)\n{\n\
     if(target == NULL) return;\n\
     if(value == _UI_MODIFY_FLAG_TOGGLE) value = lv_obj_has_flag(target, flag) ? _UI_MODIFY_FLAG_REMOVE : _UI_MODIFY_FLAG_ADD;\n\
     if(value == _UI_MODIFY_FLAG_ADD) lv_obj_add_flag(target, flag);\n\
-    else lv_obj_clear_flag(target, flag);\n}\n\n\
-void _ui_state_modify(lv_obj_t * target, int32_t state, int value)\n{\n\
+    else lv_obj_clear_flag(target, flag);\n}\n"
+            .to_owned();
+    }
+    let mut lines = vec![
+        "void _ui_flag_modify(lv_obj_t * target, int32_t flag, int value)".to_owned(),
+        "{".to_owned(),
+        "    if(target == NULL) return;".to_owned(),
+        "    void (*set)(lv_obj_t *, bool);".to_owned(),
+        "    bool (*get)(const lv_obj_t *);".to_owned(),
+        "    switch(flag) {".to_owned(),
+    ];
+    for flag in ObjFlag::ALL {
+        let name = flag_name(*flag);
+        lines.push(format!("        case {}: set = lv_obj_set_{name}; get = lv_obj_is_{name}; break;", flag.c_const()));
+    }
+    lines.extend(
+        [
+            "        default: return;",
+            "    }",
+            "    if(value == _UI_MODIFY_FLAG_TOGGLE) value = get(target) ? _UI_MODIFY_FLAG_REMOVE : _UI_MODIFY_FLAG_ADD;",
+            "    set(target, value == _UI_MODIFY_FLAG_ADD);",
+            "}",
+        ]
+        .map(str::to_owned),
+    );
+    lines.join("\n") + "\n"
+}
+
+fn helpers_c(project: &Project, names: &Naming) -> String {
+    format!(
+        "{}\n#include \"{}\"\n\n{}\n{}",
+        header(project),
+        names.file("helpers.h"),
+        prefixed(&flag_modify(Target::of(project)), names),
+        prefixed(
+            "void _ui_state_modify(lv_obj_t * target, int32_t state, int value)\n{\n\
     if(target == NULL) return;\n\
     if(value == _UI_MODIFY_STATE_TOGGLE) value = lv_obj_has_state(target, state) ? _UI_MODIFY_STATE_REMOVE : _UI_MODIFY_STATE_ADD;\n\
     if(value == _UI_MODIFY_STATE_ADD) lv_obj_add_state(target, state);\n\
@@ -1435,6 +1489,45 @@ mod tests {
         assert!(file(&sources, "ui_theme_manager.c").contains("case LV_STYLE_IMAGE_RECOLOR:"));
         assert!(sources.warnings.iter().any(|w| w.contains("Meter1: LVGL 9 has no meter")));
         assert!(sources.warnings.iter().any(|w| w.contains("Chart1: Zoom (256 = 100%) is not available in LVGL 9.6")));
+    }
+
+    #[test]
+    fn lvgl_9_6_avoids_deprecated_calls() {
+        let mut project = project();
+        project.lvgl_version = lvglab_model::project::LvglVersion::V9_6_0;
+        let screen = project.screens[0].id;
+        let mut spans = project.new_widget(WidgetKind::Spangroup);
+        spans.set_prop("align", PropValue::Enum("LV_TEXT_ALIGN_CENTER".into()));
+        spans.set_prop("mode", PropValue::Enum("LV_SPAN_MODE_BREAK".into()));
+        project.insert(screen, 0, spans).unwrap();
+        let mut window = project.new_widget(WidgetKind::Win);
+        window.children.push(project.new_widget(WidgetKind::Label));
+        project.insert(screen, 0, window).unwrap();
+
+        let sources = generate(&project, &AssetDecls::default());
+        let screen = file(&sources, "ui_Screen1.c");
+        assert!(screen.contains("lv_obj_set_scrollable(ui_Button1, true);"), "{screen}");
+        assert!(!screen.contains("_flag("), "{screen}");
+        assert!(screen.contains("lv_obj_set_style_text_align(ui_Spangroup1, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);"));
+        assert!(!screen.contains("lv_spangroup_set_align") && !screen.contains("lv_spangroup_set_mode"));
+        assert!(sources.warnings.iter().any(|w| w.contains("Spangroup1: Mode is not available in LVGL 9.6")));
+        // The window and its children sit between the pragmas.
+        let begin = screen.find("LV_DEPRECATIONS_IGNORE_BEGIN").unwrap();
+        let end = screen.find("LV_DEPRECATIONS_IGNORE_END").unwrap();
+        let label = screen.find("ui_Label1 = lv_label_create(lv_win_get_content(ui_Window1));").unwrap();
+        assert!(begin < screen.find("lv_win_create").unwrap() && label < end);
+        let helpers = file(&sources, "ui_helpers.c");
+        assert!(helpers.contains("case LV_OBJ_FLAG_HIDDEN: set = lv_obj_set_hidden; get = lv_obj_is_hidden; break;"));
+        assert!(!helpers.contains("_flag("));
+
+        // Older releases keep the calls they have.
+        project.lvgl_version = lvglab_model::project::LvglVersion::V9_2_2;
+        let sources = generate(&project, &AssetDecls::default());
+        let screen = file(&sources, "ui_Screen1.c");
+        assert!(screen.contains("lv_obj_add_flag(ui_Button1, LV_OBJ_FLAG_SCROLLABLE);"));
+        assert!(screen.contains("lv_spangroup_set_align(ui_Spangroup1, LV_TEXT_ALIGN_CENTER);"));
+        assert!(!screen.contains("LV_DEPRECATIONS_IGNORE"));
+        assert!(file(&sources, "ui_helpers.c").contains("lv_obj_has_flag(target, flag)"));
     }
 
     #[test]

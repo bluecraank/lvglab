@@ -15,8 +15,9 @@ pub fn prop_supported(version: LvglVersion, kind: WidgetKind, key: &str) -> bool
     if !version.is_v9() {
         return true;
     }
-    match kind.def().v9.prop(key) {
-        Some(v9) => v9.emit != crate::prop::Emit::None && version.major_minor().1 >= v9.since,
+    let minor = version.major_minor().1;
+    match kind.def().v9.prop(key, minor) {
+        Some(v9) => v9.emit != crate::prop::Emit::None && minor >= v9.since,
         None => true,
     }
 }

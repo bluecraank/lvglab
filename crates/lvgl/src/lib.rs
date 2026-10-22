@@ -334,6 +334,30 @@ mod tests {
     }
 
     #[test]
+    fn lvgl_9_6_flag_setters_and_deprecated_widgets_render() {
+        let mut p = project();
+        p.lvgl_version = lvglab_model::project::LvglVersion::V9_6_0;
+        let screen = p.screens[0].id;
+        let mut window = p.new_widget(WidgetKind::Win);
+        window.geometry.align = Align::TopLeft;
+        window.geometry.x = Coord::px(130);
+        window.geometry.width = Coord::px(60);
+        window.geometry.height = Coord::px(60);
+        p.insert(screen, 1, window).unwrap();
+        let frame = render_screen(&p, 0, None).expect("rendered");
+        assert_eq!(frame.rgba[(30 * 200 + 30) * 4], 255, "the button is shown; skipped: {:?}", frame.skipped);
+        assert!(
+            !frame.skipped.iter().any(|s| s.contains("lv_win") || s.contains("DEPRECATIONS")),
+            "skipped: {:?}",
+            frame.skipped
+        );
+        let button = p.screens[0].children[0].id;
+        p.widget_mut(button).unwrap().set_flag(lvglab_model::flags::ObjFlag::Hidden, true);
+        let frame = render_screen(&p, 0, None).expect("rendered");
+        assert_ne!(frame.rgba[(30 * 200 + 30) * 4], 255, "lv_obj_set_hidden() hides the button");
+    }
+
+    #[test]
     fn component_instances_render_through_their_generated_functions() {
         let mut p = project();
         let component = p.add_component();
