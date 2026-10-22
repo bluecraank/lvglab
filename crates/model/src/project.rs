@@ -514,12 +514,14 @@ impl Project {
         }
     }
 
+    /// Where a screen or widget sits; `None` for a component, which has no
+    /// parent and is not a screen.
     pub fn location(&self, id: WidgetId) -> Option<Location> {
         if let Some(index) = self.screens.iter().position(|s| s.id == id) {
             return Some(Location { parent: None, index });
         }
         let path = self.path_to(id)?;
-        let parent = path[path.len() - 2];
+        let parent = path[..path.len().checked_sub(1)?].last()?;
         let index = parent.children.iter().position(|c| c.id == id)?;
         Some(Location { parent: Some(parent.id), index })
     }
@@ -915,6 +917,16 @@ mod tests {
             assert!(g.x.value + g.width.value <= gw && g.y.value + g.height.value <= gh, "inside the container");
         }
         assert!(!p.group_component_roots(component), "a single object is left alone");
+    }
+
+    #[test]
+    fn components_have_no_location() {
+        let mut p = Project::new("P");
+        let component = p.add_component();
+        let root = p.widget(component).unwrap().children[0].id;
+        assert!(p.location(component).is_none());
+        assert_eq!(p.location(root).map(|l| l.parent), Some(Some(component)));
+        assert!(p.remove(component).is_some());
     }
 
     #[test]
