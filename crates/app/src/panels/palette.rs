@@ -69,8 +69,13 @@ fn tile(ui: &mut egui::Ui, studio: &mut Studio, def: &'static WidgetDef) {
         egui::FontId::proportional(11.0),
         text_color,
     );
-    let note = def.v9.note;
-    let response = if studio.doc.project.lvgl_version.is_v9() && !note.is_empty() {
+    let version = studio.doc.project.lvgl_version;
+    let note = if version.is_v9() && def.v9.is_deprecated(version.major_minor().1) {
+        catalog::V9::DEPRECATED_NOTE
+    } else {
+        def.v9.note
+    };
+    let response = if version.is_v9() && !note.is_empty() {
         response.on_hover_text(format!("{}\n\n{}", tr(def.description), tr(note)))
     } else {
         response.on_hover_text(tr(def.description))
