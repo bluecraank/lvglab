@@ -8,6 +8,7 @@ mod canvas;
 mod commands;
 mod dialogs;
 mod document;
+mod events_overview;
 mod i18n;
 mod icons;
 mod lvgl_preview;

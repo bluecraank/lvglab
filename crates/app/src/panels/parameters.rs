@@ -67,7 +67,7 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
 fn identity(ui: &mut egui::Ui, project: &Project, widget: &mut Widget) {
     grid(ui, "identity", |ui| {
         label(ui, tr("Name"), tr("Used for the C variable ui_<Name>."));
-        ui.add(egui::TextEdit::singleline(&mut widget.name).desired_width(f32::INFINITY));
+        ui.add(egui::TextEdit::singleline(&mut widget.name).id_salt("widget_name").desired_width(f32::INFINITY));
         ui.end_row();
     });
     let valid = !widget.name.is_empty() && widget.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
@@ -159,7 +159,7 @@ fn prop_editor(ui: &mut egui::Ui, project: &Project, widget: &Widget, def: &Prop
             changed
         }
         (PropKind::Text, PropValue::Text(v)) => {
-            ui.add(egui::TextEdit::singleline(v).desired_width(f32::INFINITY)).changed()
+            ui.add(egui::TextEdit::singleline(v).id_salt(("prop_text", &id)).desired_width(f32::INFINITY)).changed()
         }
         (
             PropKind::Lines
@@ -168,7 +168,9 @@ fn prop_editor(ui: &mut egui::Ui, project: &Project, widget: &Widget, def: &Prop
             | PropKind::ImageArray
             | PropKind::ChartSeries,
             PropValue::Text(v),
-        ) => ui.add(egui::TextEdit::multiline(v).desired_rows(3).desired_width(f32::INFINITY)).changed(),
+        ) => ui
+            .add(egui::TextEdit::multiline(v).id_salt(("prop_lines", &id)).desired_rows(3).desired_width(f32::INFINITY))
+            .changed(),
         (PropKind::Enum(options), PropValue::Enum(v)) => widgets::options(ui, id, v, options),
         (PropKind::Color, PropValue::Color(c)) => ui.horizontal(|ui| widgets::color(ui, c)).inner,
         (PropKind::Pair { min, max, first, second }, PropValue::Pair(a, b)) => {
