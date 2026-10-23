@@ -38,6 +38,11 @@ pub fn show(ui: &mut egui::Ui, studio: &mut Studio) {
     if let Some(index) = remove {
         events.remove(index);
     }
+    ui.horizontal(|ui| {
+        if ui.button(tr("All events…")).on_hover_text(tr("Every event of the project in one list")).clicked() {
+            studio.events_overview = Some(Default::default());
+        }
+    });
     if ui.button(format!("+ {}", tr("Add event"))).clicked() {
         let trigger =
             if original.kind == WidgetKind::Screen { EventTrigger::ScreenLoaded } else { EventTrigger::Clicked };
@@ -86,7 +91,11 @@ fn editor(ui: &mut egui::Ui, project: &Project, handler: &mut EventHandler, inde
             }
             Action::CallFunction { name } => {
                 label(ui, tr("Function"), tr("Declared in ui_events.h; implement it in ui_events.c."));
-                ui.add(egui::TextEdit::singleline(name).font(egui::TextStyle::Monospace));
+                ui.add(
+                    egui::TextEdit::singleline(name)
+                        .id_salt(("event_function", index))
+                        .font(egui::TextStyle::Monospace),
+                );
                 ui.end_row();
             }
             Action::ModifyFlag { target, flag, op } => {
@@ -106,7 +115,7 @@ fn editor(ui: &mut egui::Ui, project: &Project, handler: &mut EventHandler, inde
             Action::SetText { target, text } => {
                 target_row(ui, project, target, index);
                 label(ui, tr("Text"), "");
-                ui.text_edit_singleline(text);
+                ui.add(egui::TextEdit::singleline(text).id_salt(("event_text", index)));
                 ui.end_row();
             }
             Action::SetValue { target, value } => {

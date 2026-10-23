@@ -76,6 +76,8 @@ pub struct Studio {
     pub lvgl_preview: crate::lvgl_preview::LvglPreview,
     /// The open search window (Ctrl+F).
     pub search: Option<crate::search_dialog::SearchState>,
+    /// The open window with all events.
+    pub events_overview: Option<crate::events_overview::EventsOverview>,
     /// A running screenshot export.
     pub shots: Option<crate::screenshots::ShotJob>,
     /// Close the window as soon as possible (command line export done).
@@ -211,6 +213,7 @@ impl Studio {
             recovered: Vec::new(),
             merge: None,
             search: None,
+            events_overview: None,
             lvgl_preview: Default::default(),
             timeline_this_screen: false,
             shots: None,
@@ -430,6 +433,9 @@ impl StudioApp {
         studio.show_about = dialog == Some("about");
         if dialog == Some("discard") {
             studio.confirm_discard = Some(Command::NewProject);
+        }
+        if dialog == Some("events") {
+            studio.events_overview = Some(Default::default());
         }
         if dialog == Some("new") {
             studio.execute(Command::NewProject, true);
@@ -694,6 +700,11 @@ impl StudioApp {
                         None => self.dock.push_to_focused_leaf(panel),
                     }
                 }
+            }
+            ui.separator();
+            if ui.button(tr("All events…")).clicked() {
+                self.studio.events_overview = Some(Default::default());
+                ui.close_menu();
             }
             ui.separator();
             if ui.button(tr("Reset layout")).clicked() {
@@ -1028,6 +1039,7 @@ impl StudioApp {
         crate::start::show(ctx, &mut self.studio);
         crate::merge_dialog::show(ctx, &mut self.studio);
         crate::search_dialog::show(ctx, &mut self.studio);
+        crate::events_overview::show(ctx, &mut self.studio);
         crate::screenshots::step(ctx, &mut self.studio);
         if self.studio.exit_requested {
             self.close_confirmed = true;
