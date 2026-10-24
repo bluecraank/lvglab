@@ -235,7 +235,7 @@ style_props! {
     MaxHeight => "max_height", "Max. height", Size, StyleKind::Coord;
     X => "x", "X", Size, StyleKind::Coord;
     Y => "y", "Y", Size, StyleKind::Coord;
-    Align => "align", "Align", Size, StyleKind::Enum(ALIGNS);
+    Align => "align", "Style align", Size, StyleKind::Enum(ALIGNS);
     TransformWidth => "transform_width", "Transform width", Transform, PX;
     TransformHeight => "transform_height", "Transform height", Transform, PX;
     TranslateX => "translate_x", "Translate X", Transform, StyleKind::Coord;

@@ -4,7 +4,7 @@
 
 use crate::coord::{Align, Coord, Unit, clamp_px};
 use crate::flags::{FlexAlign, ObjFlag, StateMask};
-use crate::style::StyleProp;
+use crate::style::{StyleProp, StyleValue};
 use crate::theme::StyleResolver;
 use crate::widget::{FlexLayout, Widget, WidgetId, WidgetKind};
 
@@ -81,6 +81,8 @@ pub struct Node<'a> {
     pub depth: usize,
     /// Hidden itself or below a hidden ancestor.
     pub hidden: bool,
+    /// Alignment in effect: the style align of the displayed state overrides the geometry's.
+    pub align: Align,
 }
 
 /// The layout of one screen, in paint order.
@@ -156,7 +158,8 @@ impl<'a> Engine<'_, 'a> {
         let clip = if widget.flag(ObjFlag::OverflowVisible) { parent_clip } else { parent_clip.intersect(rect) };
         let area = Self::children_area(widget, rect, content);
         let index = self.nodes.len();
-        self.nodes.push(Node { widget, rect, content, children_area: area, clip: parent_clip, parent, depth, hidden });
+        let align = self.align(path);
+        self.nodes.push(Node { widget, rect, content, children_area: area, clip: parent_clip, parent, depth, hidden, align });
 
         let visible: Vec<&'a Widget> = self.visible_children(widget);
         let rects = match widget.layout {
@@ -181,6 +184,23 @@ impl<'a> Engine<'_, 'a> {
             .or_else(|| widget.children.get(widget.prop_int("active_tab").max(0) as usize))
             .unwrap_or(&widget.children[0]);
         vec![active]
+    }
+
+    /// Alignment of the last widget of `path`. `lv_obj_set_style_align` is
+    /// emitted after `lv_obj_set_align`, so a style align wins.
+    fn align(&self, path: &[&Widget]) -> Align {
+        let Some(widget) = path.last() else { return Align::TopLeft };
+        match self.resolver.get(path, "main", widget.state_mask(), StyleProp::Align) {
+            Some(StyleValue::Enum(value)) => Align::from_suffix(&value).unwrap_or(widget.geometry.align),
+            _ => widget.geometry.align,
+        }
+    }
+
+    /// Alignment of `child`, a child of the last widget of `path`.
+    fn child_align(&self, child: &Widget, path: &[&Widget]) -> Align {
+        let mut path = path.to_vec();
+        path.push(child);
+        self.align(&path)
     }
 
     fn translate(&self, path: &[&Widget], rect: Rect) -> Rect {
@@ -239,7 +259,7 @@ impl<'a> Engine<'_, 'a> {
             return Rect::new(area.x, area.y, w, h);
         }
         let g = child.geometry;
-        let (ax, ay) = g.align.anchor(area.tuple(), parent_rect.tuple(), (w, h));
+        let (ax, ay) = self.child_align(child, path).anchor(area.tuple(), parent_rect.tuple(), (w, h));
         let dx = g.x.resolve(area.w, 0);
         let dy = g.y.resolve(area.h, 0);
         Rect::new(ax + dx, ay + dy, w, h)
@@ -357,8 +377,9 @@ impl<'a> Engine<'_, 'a> {
         for child in widget.children.iter().filter(|c| !c.is_hidden()) {
             let g = child.geometry;
             let (w, h) = self.child_size(child, path, area);
-            let centered_x = matches!(g.align, Align::Center | Align::TopMid | Align::BottomMid);
-            let centered_y = matches!(g.align, Align::Center | Align::LeftMid | Align::RightMid);
+            let align = self.child_align(child, path);
+            let centered_x = matches!(align, Align::Center | Align::TopMid | Align::BottomMid);
+            let centered_y = matches!(align, Align::Center | Align::LeftMid | Align::RightMid);
             let x = if g.x.unit == Unit::Px { g.x.value.abs() } else { 0 };
             let y = if g.y.unit == Unit::Px { g.y.value.abs() } else { 0 };
             extent.0 = extent.0.max(if centered_x { w + 2 * x } else { w + x });
@@ -561,6 +582,17 @@ mod tests {
         let rects = layout_of(&screen);
         assert_eq!(rects[0], Rect::new(0, 0, 320, 240));
         assert_eq!(rects[1], Rect::new(80, 110, 160, 40));
+    }
+
+    #[test]
+    fn style_align_overrides_the_geometry() {
+        let mut screen = Widget::new(WidgetKind::Screen, WidgetId(1), "S");
+        let mut child = container(2);
+        child.geometry.width = Coord::px(100);
+        child.geometry.height = Coord::px(40);
+        child.styles.set("main", StateMask::DEFAULT, StyleProp::Align, StyleValue::Enum("LV_ALIGN_CENTER".into()));
+        screen.children.push(child);
+        assert_eq!(layout_of(&screen)[1], Rect::new(110, 100, 100, 40));
     }
 
     #[test]

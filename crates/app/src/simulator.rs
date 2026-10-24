@@ -611,6 +611,7 @@ mod tests {
             parent: None,
             hidden: false,
             movable: true,
+            align: lvglab_model::coord::Align::TopLeft,
         }
     }
 
