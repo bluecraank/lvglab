@@ -159,7 +159,17 @@ impl<'a> Engine<'_, 'a> {
         let area = Self::children_area(widget, rect, content);
         let index = self.nodes.len();
         let align = self.align(path);
-        self.nodes.push(Node { widget, rect, content, children_area: area, clip: parent_clip, parent, depth, hidden, align });
+        self.nodes.push(Node {
+            widget,
+            rect,
+            content,
+            children_area: area,
+            clip: parent_clip,
+            parent,
+            depth,
+            hidden,
+            align,
+        });
 
         let visible: Vec<&'a Widget> = self.visible_children(widget);
         let rects = match widget.layout {
