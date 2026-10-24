@@ -111,7 +111,7 @@ pub fn apply(studio: &mut Studio, op: AlignOp) {
     for (node, rect) in nodes.iter().zip(arranged) {
         let Some(parent) = node.parent.map(|p| studio.canvas.nodes[p].clone()) else { continue };
         if let Some(widget) = studio.doc.project.widget_mut(node.id) {
-            widget.geometry = geometry_for_rect(widget.geometry, rect, &parent, false);
+            widget.geometry = geometry_for_rect(widget.geometry, node.align, rect, &parent, false);
         }
     }
 }
@@ -258,6 +258,7 @@ mod tests {
             parent,
             hidden: false,
             movable: true,
+            align: lvglab_model::coord::Align::TopLeft,
         };
         let nodes = vec![
             node(1, lay::Rect::new(0, 0, 400, 300), None),

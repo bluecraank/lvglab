@@ -8,7 +8,7 @@ mod render;
 use std::collections::HashMap;
 
 use eframe::egui::{self, Color32, CursorIcon, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
-use lvglab_model::coord::{Coord, Unit};
+use lvglab_model::coord::{Align, Coord, Unit};
 use lvglab_model::layout::{self as lay, Layout, Measure};
 use lvglab_model::project::DisplayShape;
 use lvglab_model::theme::{StyleResolver, Theme};
@@ -39,6 +39,8 @@ pub struct NodeInfo {
     pub hidden: bool,
     /// Position and size can be edited on the canvas.
     pub movable: bool,
+    /// Alignment in effect, see [`lay::Node::align`].
+    pub align: Align,
 }
 
 #[derive(Clone, Copy)]
@@ -100,15 +102,15 @@ impl CanvasState {
         let widget = project.widget(id)?;
         let parent = &self.nodes[node.parent?];
         let rect = lay::Rect { x: node.rect.x + dx, y: node.rect.y + dy, ..node.rect };
-        Some(geometry_for_rect(widget.geometry, rect, parent, false))
+        Some(geometry_for_rect(widget.geometry, node.align, rect, parent, false))
     }
 }
 
 /// Converts a desired display rectangle back into a geometry that keeps
-/// the widget's alignment and units.
-fn geometry_for_rect(mut g: Geometry, rect: lay::Rect, parent: &NodeInfo, resized: bool) -> Geometry {
+/// the widget's alignment (`align`, the one in effect) and units.
+fn geometry_for_rect(mut g: Geometry, align: Align, rect: lay::Rect, parent: &NodeInfo, resized: bool) -> Geometry {
     let area = parent.children_area;
-    let (ax, ay) = g.align.anchor(area.tuple(), parent.rect.tuple(), (rect.w, rect.h));
+    let (ax, ay) = align.anchor(area.tuple(), parent.rect.tuple(), (rect.w, rect.h));
     let to_unit = |unit: Unit, px: i32, reference: i32| match unit {
         Unit::Percent if reference > 0 => Coord::pct((px as f32 * 100.0 / reference as f32).round() as i32),
         _ => Coord::px(px),
@@ -614,9 +616,10 @@ fn interact(
                     (id, resize(start, handle, dx, dy, &snap), geometry, true)
                 }
             };
-            let parent = studio.canvas.node(id).and_then(|(_, n)| n.parent).map(|p| studio.canvas.nodes[p].clone());
-            if let (Some(parent), Some(widget)) = (parent, studio.doc.project.widget_mut(id)) {
-                widget.geometry = geometry_for_rect(geometry, rect, &parent, resized);
+            let node = studio.canvas.node(id).map(|(_, n)| (n.parent, n.align));
+            let parent = node.and_then(|(p, align)| p.map(|p| (studio.canvas.nodes[p].clone(), align)));
+            if let (Some((parent, align)), Some(widget)) = (parent, studio.doc.project.widget_mut(id)) {
+                widget.geometry = geometry_for_rect(geometry, align, rect, &parent, resized);
             }
         } else {
             studio.canvas.drag = None;
@@ -709,7 +712,7 @@ fn drop_from_palette(
         let w = size(widget.geometry.width, parent.children_area.w, 80);
         let h = size(widget.geometry.height, parent.children_area.h, 30);
         let rect = lay::Rect::new(x - w / 2, y - h / 2, w, h);
-        widget.geometry = geometry_for_rect(widget.geometry, rect, &parent, false);
+        widget.geometry = geometry_for_rect(widget.geometry, widget.geometry.align, rect, &parent, false);
     }
     let id = widget.id;
     if studio.doc.project.insert(parent.id, usize::MAX, widget).is_ok() {
@@ -929,6 +932,7 @@ fn node_infos(layout: &Layout<'_>) -> Vec<NodeInfo> {
                 parent: n.parent,
                 hidden: n.hidden,
                 movable: n.parent.is_some() && !n.widget.def().managed_geometry && !parent_flex,
+                align: n.align,
             }
         })
         .collect();

@@ -9,6 +9,7 @@ use lvglab_model::compat;
 use lvglab_model::coord::Align;
 use lvglab_model::flags::{Dir, FlexAlign, FlexFlow, ObjFlag, ObjState, ScrollbarMode, SnapMode};
 use lvglab_model::prop::{PropDef, PropKind, PropValue};
+use lvglab_model::style::StyleProp;
 use lvglab_model::widget::FlexLayout;
 use lvglab_model::{Project, Widget, WidgetKind};
 
@@ -80,6 +81,7 @@ fn identity(ui: &mut egui::Ui, project: &Project, widget: &mut Widget) {
 }
 
 fn geometry(ui: &mut egui::Ui, widget: &mut Widget) {
+    let style_align = widget.styles.effective("main", widget.state_mask(), StyleProp::Align).is_some();
     let g = &mut widget.geometry;
     ui.horizontal(|ui| {
         align_picker(ui, &mut g.align);
@@ -87,6 +89,9 @@ fn geometry(ui: &mut egui::Ui, widget: &mut Widget) {
             widgets::choice(ui, "align_all", &mut g.align, Align::ALL, Align::label);
         });
     });
+    if style_align {
+        ui.colored_label(visuals::WARNING, tr("Overridden by Style align in the Style panel."));
+    }
     grid(ui, "geometry_grid", |ui| {
         label(ui, "X", "");
         widgets::coord(ui, "x_unit", &mut g.x, false);
