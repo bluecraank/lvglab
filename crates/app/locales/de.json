@@ -923,5 +923,7 @@
   "{}: style {} removed": "{}: Style {} entfernt",
   "{}: styles of the part {} removed": "{}: Styles des Parts {} entfernt",
   "{}: widget removed ({})": "{}: Widget entfernt ({})",
-  "{}: {} reset": "{}: {} zurückgesetzt"
+  "{}: {} reset": "{}: {} zurückgesetzt",
+  "Runtime": "Laufzeit",
+  "Exported without const: the application can change the value at runtime and re-apply the theme.": "Ohne const exportiert: die Anwendung kann den Wert zur Laufzeit ändern und das Theme neu anwenden."
 }

@@ -770,6 +770,11 @@ impl Project {
             return false;
         }
         themes.variables[index] = new.to_owned();
+        for v in &mut themes.runtime {
+            if v == old {
+                *v = new.to_owned();
+            }
+        }
         for screen in self.roots_mut() {
             screen.walk_mut(&mut |w| {
                 for block in w.styles.blocks_mut() {

@@ -1189,8 +1189,10 @@ fn themes_h(project: &Project, names: &Naming) -> String {
     }
     code.line(&format!("#define {} {count}\n", names.helper_const("THEME_COUNT")));
     for variable in &themes.variables {
-        code.line(&format!("extern const {t} {}[{count}];", names.theme_color(variable)));
-        code.line(&format!("extern const {t} {}[{count}];", names.theme_alpha(variable)));
+        // Runtime variables: the application may write a value and call _ui_theme_apply()
+        let q = if themes.is_runtime(variable) { "" } else { "const " };
+        code.line(&format!("extern {q}{t} {}[{count}];", names.theme_color(variable)));
+        code.line(&format!("extern {q}{t} {}[{count}];", names.theme_alpha(variable)));
     }
     code.blank();
     code.line(&format!("extern uint8_t {};", names.global("theme_idx")));
@@ -1214,8 +1216,9 @@ fn themes_c(project: &Project, names: &Naming) -> String {
         };
         let color = values(&|v| format!("0x{:06X}", v.color.to_hex()));
         let alpha = values(&|v| v.opa.to_string());
-        code.line(&format!("const {t} {}[{count}] = {{{color}}};", names.theme_color(variable)));
-        code.line(&format!("const {t} {}[{count}] = {{{alpha}}};", names.theme_alpha(variable)));
+        let q = if themes.is_runtime(variable) { "" } else { "const " };
+        code.line(&format!("{q}{t} {}[{count}] = {{{color}}};", names.theme_color(variable)));
+        code.line(&format!("{q}{t} {}[{count}] = {{{alpha}}};", names.theme_alpha(variable)));
     }
     let default = if themes.themes.is_empty() { "Default" } else { &themes.themes[0].name };
     code.line(&format!("\nuint8_t {} = {};\n", names.global("theme_idx"), names.theme_const(default)));
@@ -1603,6 +1606,22 @@ mod tests {
         let themes_c = file(&sources, "ui_themes.c");
         assert!(themes_c.contains("_ui_theme_color_Main[2] = {0xFFFFFF, 0xF15C00};"));
         assert!(themes_c.contains("_ui_theme_alpha_Main[2] = {255, 200};"));
+    }
+
+    #[test]
+    fn runtime_theme_variables_are_not_const() {
+        let mut project = project();
+        project.color_themes.add_variable("Main", ThemeColor::default());
+        project.color_themes.add_variable("User", ThemeColor { color: Color::from_hex(0xD51414), opa: 255 });
+        project.color_themes.set_runtime("User", true);
+        let sources = generate(&project, &AssetDecls::default());
+        let themes_h = file(&sources, "ui_themes.h");
+        assert!(themes_h.contains("extern const ui_theme_variable_t _ui_theme_color_Main[1];"), "{themes_h}");
+        assert!(themes_h.contains("extern ui_theme_variable_t _ui_theme_color_User[1];"), "{themes_h}");
+        assert!(themes_h.contains("extern ui_theme_variable_t _ui_theme_alpha_User[1];"));
+        let themes_c = file(&sources, "ui_themes.c");
+        assert!(themes_c.contains("\nui_theme_variable_t _ui_theme_color_User[1] = {0xD51414};"), "{themes_c}");
+        assert!(themes_c.contains("const ui_theme_variable_t _ui_theme_color_Main[1]"));
     }
 
     #[test]
