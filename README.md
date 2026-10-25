@@ -114,6 +114,8 @@ Design screens visually, import existing **SquareLine Studio** projects, and LVG
 - **Font check**: warns when a text uses characters its font does not contain.
 - **Color themes**: named theme colors with one value per theme (e.g. Default and BmwOrange). Styles bound
   to a theme color follow `ui_theme_set()` at runtime.
+  A theme color marked **Runtime** is exported without `const`: the application can write a new value
+  (e.g. `_ui_theme_color_UserColor[UI_THEME_DEFAULT] = 0x00C853;`) and call `ui_theme_set()` to apply it.
 - **AI assistant**: describe a screen and Claude builds it, validated against the widget catalog.
 - Multi language UI (English, German, Spanish, French), light and dark appearance.
 - Project settings: LVGL version, resolution (with presets), round or rectangular display.
@@ -559,7 +561,7 @@ and shows a link in the status bar. Nothing is downloaded or installed automatic
 
 The Windows installer is built with [Inno Setup](https://jrsoftware.org/isinfo.php) from
 [`installer/lvglab.iss`](installer/lvglab.iss):
-`iscc /DAppVersion=0.14.0 /DSourceDir=..\target\release installer\lvglab.iss` writes it to `dist/`.
+`iscc /DAppVersion=0.15.0 /DSourceDir=..\target\release installer\lvglab.iss` writes it to `dist/`.
 
 ```sh
 cargo test --workspace                         # unit tests of all crates
