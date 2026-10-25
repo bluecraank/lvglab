@@ -65,16 +65,26 @@ fn color_themes(ui: &mut egui::Ui, p: &mut Project) {
     ui.add_space(4.0);
     let mut rename = None;
     let mut remove = None;
+    let mut runtime_change = None;
     grid(ui, "themes_color_grid", |ui| {
         for index in 0..themes.variables.len() {
             let mut name = themes.variables[index].clone();
             if ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0)).changed() {
                 rename = Some((themes.variables[index].clone(), name));
             }
+            let variable = themes.variables[index].clone();
+            let mut runtime = themes.is_runtime(&variable);
             let value = &mut themes.themes[active].values[index];
             ui.horizontal(|ui| {
                 widgets::color(ui, &mut value.color);
                 ui.add(egui::DragValue::new(&mut value.opa).range(0..=255).prefix("α "));
+                if ui
+                    .checkbox(&mut runtime, tr("Runtime"))
+                    .on_hover_text(tr("Exported without const: the application can change the value at runtime and re-apply the theme."))
+                    .changed()
+                {
+                    runtime_change = Some((variable, runtime));
+                }
                 if ui.small_button(crate::icons::X).on_hover_text(tr("Remove color")).clicked() {
                     remove = Some(index);
                 }
@@ -88,6 +98,9 @@ fn color_themes(ui: &mut egui::Ui, p: &mut Project) {
             n += 1;
         }
         themes.add_variable(format!("Color{n}"), ThemeColor::default());
+    }
+    if let Some((variable, runtime)) = runtime_change {
+        themes.set_runtime(&variable, runtime);
     }
     if let Some(index) = remove {
         themes.remove_variable(index);
