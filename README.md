@@ -1,4 +1,4 @@
-# LVGLab
+# LVGLab - LVGL GUI Designer
 
 [![CI](https://github.com/bluecraank/lvglab/actions/workflows/ci.yml/badge.svg)](https://github.com/bluecraank/lvglab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
